@@ -5,17 +5,48 @@
  */
 
 import { createServer } from "node:http";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, normalize, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import axios from "axios";
-import config, { assertConfig, saveConfig } from "./config.js";
+import config, { assertConfig, saveConfig, keyEncrypted } from "./config.js";
 import { ReactAgent, POETRY_SYSTEM_PROMPT, formatRequestError } from "./agent.js";
 import { executeTool, getToolDefinitions } from "./tools.js";
 import { presentTurn } from "./lib/present.js";
 import { appRoot } from "./lib/paths.js";
 
 const bodyLimit = 1_500_000;
+
+/** 允许访问的 Host 头。只认本机，挡住 DNS rebinding。 */
+const ALLOWED_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * @param {import("node:http").IncomingMessage} req
+ * @returns {boolean}
+ */
+function isLocalHost(req) {
+  const host = String(req.headers.host || "").toLowerCase();
+  if (!host) return false;
+  const hostname = host.replace(/:\d+$/, "");
+  return ALLOWED_HOSTS.has(hostname);
+}
+
+/**
+ * @param {import("node:http").IncomingMessage} req
+ * @param {string} token
+ * @returns {boolean}
+ */
+function hasValidToken(req, token) {
+  const raw = req.headers["x-shichuang-token"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string" || value.length !== token.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(value, "utf8"), Buffer.from(token, "utf8"));
+  } catch {
+    return false;
+  }
+}
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -63,7 +94,7 @@ function settingsView() {
     model: config.model,
     maxIterations: config.maxIterations,
     hasKey: key.length > 0,
-    keyHint: key.length >= 8 ? `已保存，末四位 ${key.slice(-4)}` : (key ? "已保存" : ""),
+    keyHint: key ? (keyEncrypted ? "已保存（系统加密）" : "已保存（命令行模式，明文）") : "",
     deepseek: DEEPSEEK,
   };
 }
@@ -166,12 +197,46 @@ async function handleChat(req, res) {
 /**
  * @param {unknown} history
  */
+/** 每轮送进模型的历史预算（粗略按字估算，中文约 2 字一个 token）。 */
+const HISTORY_CHAR_BUDGET = 24000;
+
+/**
+ * 整理前端回传的历史：
+ * - 只留最近 80 条；
+ * - 较早的大段工具观测（韵部字表、诗集正文）折叠成占位，避免每轮重复上传；
+ * - 总字数超预算时，继续从最早的非工具消息开始折叠。
+ * 折叠只改 content，role / tool_call_id 保留，不会破坏 tool_calls 配对。
+ *
+ * @param {unknown} history
+ */
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
-  return history
+  const rows = history
     .filter((item) => item && typeof item === "object")
     .map((item) => ({ ...item }))
     .slice(-80);
+
+  const keepFrom = Math.max(0, rows.length - 6);
+  let budget = HISTORY_CHAR_BUDGET;
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const content = typeof rows[i].content === "string" ? rows[i].content : "";
+    const size = content.length;
+
+    if (i < keepFrom && rows[i].role === "tool" && size > 600) {
+      rows[i].content = `（较早的工具结果已省略，原有 ${size} 字）`;
+      continue;
+    }
+
+    if (budget - size < 0 && i < keepFrom) {
+      rows[i].content = `（较早的对话已省略，原有 ${size} 字）`;
+      continue;
+    }
+
+    budget -= size;
+  }
+
+  return rows;
 }
 
 /**
@@ -323,12 +388,68 @@ async function sendFile(res, filePath) {
 }
 
 /**
+ * 简单版号比较：只认 x.y.z。返回 1 / 0 / -1。
+ * @param {string} a
+ * @param {string} b
+ */
+function compareVersions(a, b) {
+  const left = String(a || "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const right = String(b || "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    const x = left[i] || 0;
+    const y = right[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * 查一下 GitHub 上最新版是多少。离线时返回错误，不阻断使用。
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ */
+async function handleUpdateCheck(req, res) {
+  let current = "0.0.0";
+  try {
+    const pkg = JSON.parse(await readFile(resolve(appRoot(), "package.json"), "utf8"));
+    current = String(pkg.version || current);
+  } catch {
+    // 读不到就按 0.0.0 处理
+  }
+
+  try {
+    const response = await axios.get(
+      "https://api.github.com/repos/haomingtang787-ai/an-awesome-project/releases/latest",
+      {
+        headers: { "User-Agent": "shichuang", Accept: "application/vnd.github+json" },
+        timeout: 20000,
+        validateStatus: () => true,
+      },
+    );
+    if (response.status !== 200) {
+      sendJson(res, 502, { error: `查询更新失败（HTTP ${response.status}）。` });
+      return;
+    }
+    const latest = String(response.data?.tag_name || "").replace(/^v/i, "");
+    sendJson(res, 200, {
+      current,
+      latest,
+      hasUpdate: compareVersions(latest, current) > 0,
+      url: String(response.data?.html_url || ""),
+    });
+  } catch (error) {
+    sendJson(res, 502, { error: formatRequestError(error) });
+  }
+}
+
+/**
  * 启动本地服务。port 为 0 时由系统分配空闲端口。
  * @param {{ host?: string, port?: number, quiet?: boolean }} [options]
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
 export async function startServer(options = {}) {
   const host = options.host || "127.0.0.1";
+  const token = options.token || randomBytes(16).toString("hex");
   const listenPort = options.port === undefined
     ? (Number(process.env.PORT) || 8787)
     : options.port;
@@ -339,8 +460,24 @@ export async function startServer(options = {}) {
     try {
       const url = new URL(req.url || "/", `http://${host}`);
 
+      if (url.pathname.startsWith("/api/")) {
+        if (!isLocalHost(req)) {
+          sendJson(res, 403, { error: "只接受本机访问。" });
+          return;
+        }
+        if (!hasValidToken(req, token)) {
+          sendJson(res, 401, { error: "缺少访问令牌，请通过诗窗客户端打开。" });
+          return;
+        }
+      }
+
       if (req.method === "GET" && (url.pathname === "/api/ready" || url.pathname === "/api/settings")) {
         sendJson(res, 200, settingsView());
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/update") {
+        await handleUpdateCheck(req, res);
         return;
       }
 
@@ -410,13 +547,14 @@ export async function startServer(options = {}) {
 
   const port = typeof address === "object" && address ? address.port : listenPort;
   if (!quiet) {
-    console.log(`诗窗已打开：http://${host}:${port}`);
+    console.log(`诗窗已打开：http://${host}:${port}/?t=${token}`);
     console.log("命令行版本仍可用：npm run cli");
   }
 
   return {
     host,
     port,
+    token,
     close: () => new Promise((resolveClose, reject) => {
       server.close((error) => (error ? reject(error) : resolveClose()));
     }),

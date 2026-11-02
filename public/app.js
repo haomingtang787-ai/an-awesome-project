@@ -1,5 +1,23 @@
 const STORAGE_KEY = "shici-window-v1";
 
+/**
+ * 本地服务的访问令牌。
+ * 桌面端把令牌拼在启动 URL 里（?t=...），页面从这里取出，之后每个 /api 请求都带上。
+ * 本机其它程序没有令牌，读不到配置，也发不了对话请求。
+ */
+const accessToken = new URLSearchParams(location.search).get("t") || "";
+
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if (!accessToken || !url.startsWith("/api/")) return nativeFetch(input, init);
+    const headers = new Headers((init && init.headers) || undefined);
+    headers.set("X-ShiChuang-Token", accessToken);
+    return nativeFetch(input, { ...(init || {}), headers });
+  };
+})();
+
 const EXAMPLES = [
   {
     label: "核查绝句",

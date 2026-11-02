@@ -4,3 +4,4 @@ node_modules/
 config.local.json
 dist/
 data/poems.json
+data/poems.json.gz

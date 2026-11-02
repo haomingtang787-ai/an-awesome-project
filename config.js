@@ -3,11 +3,16 @@
  *
  * 默认值在这里。密钥、地址、模型和轮次写在 config.local.json，不进仓库。
  * 页面的「接口设置」会写那个文件。模型必须支持 OpenAI 兼容的 function calling。
+ *
+ * 密钥的落盘形式：
+ * - 桌面端：写 apiKeyEnc（safeStorage 加密，Windows 走 DPAPI），明文不落盘；
+ * - 命令行：没有 safeStorage，退回 apiKey 明文，并把文件权限收到 0600。
+ * 两种形式都能读，老版本的明文文件可以无缝升级。
  */
 
-import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFileSync, writeFileSync } from "node:fs";
 import { configFile } from "./lib/paths.js";
+import { canEncrypt, decryptString, encryptString } from "./lib/secret.js";
 
 const localFile = configFile();
 
@@ -19,14 +24,14 @@ const defaults = {
 };
 
 /**
- * @returns {typeof defaults}
+ * @returns {typeof defaults & { keyEncrypted: boolean }}
  */
 function readLocal() {
   let raw;
   try {
     raw = readFileSync(localFile, "utf8");
   } catch (error) {
-    if (error && error.code === "ENOENT") return { ...defaults };
+    if (error && error.code === "ENOENT") return { ...defaults, keyEncrypted: false };
     throw error;
   }
 
@@ -40,16 +45,37 @@ function readLocal() {
     throw new Error("config.local.json 须是一个对象。");
   }
 
+  let apiKey = "";
+  let keyEncrypted = false;
+  if (typeof parsed.apiKeyEnc === "string" && parsed.apiKeyEnc) {
+    // 换了机器或换了 Windows 用户，DPAPI 解不开，此时按“未配置”处理，让用户重填。
+    apiKey = decryptString(parsed.apiKeyEnc) ?? "";
+    keyEncrypted = true;
+  } else if (typeof parsed.apiKey === "string") {
+    apiKey = parsed.apiKey;
+  }
+
   return {
-    apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : defaults.apiKey,
+    apiKey,
     baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : defaults.baseUrl,
     model: typeof parsed.model === "string" ? parsed.model : defaults.model,
     maxIterations: Number.isInteger(parsed.maxIterations) ? parsed.maxIterations : defaults.maxIterations,
+    keyEncrypted,
   };
 }
 
+const loaded = readLocal();
+
 /** @type {typeof defaults} */
-const config = readLocal();
+const config = {
+  apiKey: loaded.apiKey,
+  baseUrl: loaded.baseUrl,
+  model: loaded.model,
+  maxIterations: loaded.maxIterations,
+};
+
+/** 密钥是否以密文形式存在磁盘上（用于设置页提示）。 */
+export const keyEncrypted = loaded.keyEncrypted;
 
 /**
  * 判断字符串配置是否已填写。
@@ -108,11 +134,19 @@ export async function saveConfig(next) {
     maxIterations: next.maxIterations,
   };
   assertConfig(normalized);
-  await writeFile(localFile, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+
+  const encrypted = encryptString(normalized.apiKey);
+  const onDisk = encrypted
+    ? { apiKeyEnc: encrypted, baseUrl: normalized.baseUrl, model: normalized.model, maxIterations: normalized.maxIterations }
+    : { apiKey: normalized.apiKey, baseUrl: normalized.baseUrl, model: normalized.model, maxIterations: normalized.maxIterations };
+
+  writeFileSync(localFile, `${JSON.stringify(onDisk, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+
   config.apiKey = normalized.apiKey;
   config.baseUrl = normalized.baseUrl;
   config.model = normalized.model;
   config.maxIterations = normalized.maxIterations;
+  return { encrypted: Boolean(encrypted) };
 }
 
 export default config;

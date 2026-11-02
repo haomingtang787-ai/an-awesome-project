@@ -5,6 +5,7 @@
  */
 
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -322,6 +323,14 @@ async function buildPoems() {
   await writeFile(tmp, JSON.stringify({ poems, index }));
   await rm(target, { force: true });
   await rename(tmp, target);
+
+  // 同时出一份 gzip：安装包只带这一份，体积能小一半以上。
+  const gz = `${target}.gz`;
+  const gzTmp = `${gz}.tmp`;
+  await writeFile(gzTmp, gzipSync(await readFile(target)));
+  await rm(gz, { force: true });
+  await rename(gzTmp, gz);
+
   console.log(`诗集 ${poems.length} 首，索引 ${Object.keys(index).length}`);
 }
 

@@ -42,7 +42,19 @@ const bannerEl = document.querySelector("#banner");
 const draftEl = document.querySelector("#draft");
 const formEl = document.querySelector("#composer");
 const sendEl = document.querySelector("#send");
+const stopEl = document.querySelector("#stop");
 const modalEl = document.querySelector("#modal");
+
+const TOOL_LABELS = {
+  getPingZe: "查平仄",
+  checkNianDui: "查粘对",
+  findAoJiu: "查拗救",
+  checkYun: "查韵脚",
+  getRhythmBook: "查韵部",
+  getPoemOriginal: "查原诗",
+  getAllusion: "查典故",
+  checkCiPu: "查词谱",
+};
 const settingsEl = document.querySelector("#settings");
 const settingsForm = document.querySelector("#settings-form");
 const cfgKey = document.querySelector("#cfg-key");
@@ -67,6 +79,8 @@ let settingsHasKey = false;
 /** @type {{ conversations: object[], activeId: string }} */
 let state = loadState();
 let inFlight = false;
+/** @type {AbortController | null} */
+let activeAbort = null;
 
 document.querySelector("#new-chat").addEventListener("click", newConversation);
 document.querySelector("#clear-chat").addEventListener("click", askClear);
@@ -96,6 +110,10 @@ scrimEl.addEventListener("click", () => setSidebar(false));
 formEl.addEventListener("submit", (event) => {
   event.preventDefault();
   sendDraft();
+});
+
+stopEl.addEventListener("click", () => {
+  if (activeAbort) activeAbort.abort();
 });
 
 draftEl.addEventListener("keydown", (event) => {
@@ -464,13 +482,21 @@ function renderThread() {
       if (message.role === "user") {
         threadEl.append(block("bubble-user", message.content));
       } else if (message.presentation?.type === "meter") {
-        threadEl.append(meterCard(message.presentation, message.content));
+        const card = meterCard(message.presentation, message.content);
+        if (message.tools?.length) card.append(toolTrail(message.tools));
+        threadEl.append(card);
       } else {
-        threadEl.append(block("bubble-text", message.content));
+        const wrap = document.createElement("div");
+        wrap.className = "assistant-turn";
+        wrap.append(block("bubble-text", message.content));
+        if (message.tools?.length) wrap.append(toolTrail(message.tools));
+        threadEl.append(wrap);
       }
     }
   }
-  if (current?.pending) threadEl.append(block("pending", "正在斟酌"));
+  if (current?.pending) {
+    threadEl.append(block("pending", current.progress || "正在斟酌"));
+  }
   if (current?.error) {
     const flash = block("flash", current.error);
     flash.setAttribute("role", "alert");
@@ -809,6 +835,7 @@ async function sendDraft() {
 
   current.messages.push({ role: "user", content: text });
   current.pending = true;
+  current.progress = "正在斟酌";
   current.error = "";
   if (current.title === "新的对话") current.title = clip(text.replace(/\s+/g, ""), 16);
   current.updatedAt = Date.now();
@@ -816,54 +843,186 @@ async function sendDraft() {
   fitDraft();
   inFlight = true;
   sendEl.disabled = true;
+  stopEl.hidden = false;
+  const controller = new AbortController();
+  activeAbort = controller;
   persist();
   render();
 
   const id = current.id;
   try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ history: current.agentHistory || [], text }),
+    const data = await chatStream({
+      history: current.agentHistory || [],
+      text,
+      signal: controller.signal,
+      onProgress(event) {
+        const conversation = state.conversations.find((item) => item.id === id);
+        if (!conversation) return;
+        conversation.progress = progressLabel(event);
+        if (state.activeId === id) render();
+      },
     });
-    const data = await response.json().catch(() => ({}));
     const conversation = state.conversations.find((item) => item.id === id);
     if (!conversation) return;
     conversation.pending = false;
-    if (!response.ok) {
-      conversation.messages.pop();
-      if (!conversation.messages.length) conversation.title = "新的对话";
-      conversation.error = data.error || "这次没有得到回答。";
-      draftEl.value = text;
-      fitDraft();
-    } else {
-      conversation.error = "";
-      conversation.agentHistory = Array.isArray(data.history) ? data.history : conversation.agentHistory;
-      conversation.messages.push({
-        role: "assistant",
-        content: data.answer || "",
-        presentation: data.presentation || { type: "prose" },
-      });
-      conversation.updatedAt = Date.now();
-    }
+    conversation.progress = "";
+    conversation.error = "";
+    conversation.agentHistory = Array.isArray(data.history) ? data.history : conversation.agentHistory;
+    conversation.messages.push({
+      role: "assistant",
+      content: data.answer || "",
+      presentation: data.presentation || { type: "prose" },
+      tools: Array.isArray(data.tools) ? data.tools : [],
+    });
+    conversation.updatedAt = Date.now();
     persist();
     if (state.activeId === id) render();
-  } catch {
+  } catch (error) {
     const conversation = state.conversations.find((item) => item.id === id);
-    if (conversation) {
-      conversation.pending = false;
-      conversation.messages.pop();
-      if (!conversation.messages.length) conversation.title = "新的对话";
-      conversation.error = "页面与本地服务失去联系。";
-      persist();
-      if (state.activeId === id) render();
+    if (!conversation) return;
+    conversation.pending = false;
+    conversation.progress = "";
+    conversation.messages.pop();
+    if (!conversation.messages.length) conversation.title = "新的对话";
+    if (controller.signal.aborted || error?.name === "AbortError") {
+      conversation.error = "已停止。";
+    } else {
+      conversation.error = error?.message || "页面与本地服务失去联系。";
     }
     draftEl.value = text;
     fitDraft();
+    persist();
+    if (state.activeId === id) render();
   } finally {
     inFlight = false;
+    activeAbort = null;
     sendEl.disabled = false;
+    stopEl.hidden = true;
   }
+}
+
+/**
+ * @param {{ history: object[], text: string, signal: AbortSignal, onProgress: (event: object) => void }} options
+ */
+async function chatStream({ history, text, signal, onProgress }) {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify({ history, text, stream: true }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "这次没有得到回答。");
+  }
+
+  if (!response.body) {
+    throw new Error("本地服务没有返回可读的响应流。");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+  let streamError = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() || "";
+    for (const chunk of parts) {
+      const parsed = parseSseChunk(chunk);
+      if (!parsed) continue;
+      if (parsed.event === "progress") {
+        onProgress(parsed.data || {});
+      } else if (parsed.event === "done") {
+        donePayload = parsed.data;
+      } else if (parsed.event === "error") {
+        streamError = parsed.data?.error || "这次没有得到回答。";
+      }
+    }
+  }
+
+  if (streamError) throw new Error(streamError);
+  if (!donePayload) throw new Error("这次没有得到回答。");
+  return donePayload;
+}
+
+/**
+ * @param {string} chunk
+ */
+function parseSseChunk(chunk) {
+  let event = "message";
+  const dataLines = [];
+  for (const raw of chunk.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {object} event
+ */
+function progressLabel(event) {
+  if (!event || typeof event !== "object") return "正在斟酌";
+  if (event.kind === "tool" && event.name) {
+    return `正在${toolLabel(event.name)}`;
+  }
+  if (event.kind === "tool_done" && event.name) {
+    return event.ok === false
+      ? `${toolLabel(event.name)}未果，继续…`
+      : `已完成${toolLabel(event.name)}`;
+  }
+  if (event.kind === "round" && event.round) {
+    return `第 ${event.round} 轮 · 正在斟酌`;
+  }
+  if (event.kind === "thought" && event.text) {
+    return clip(String(event.text).replace(/\s+/g, " "), 28);
+  }
+  if (event.kind === "max") {
+    return "工具轮次已满，正在收束作答";
+  }
+  return "正在斟酌";
+}
+
+/**
+ * @param {string} name
+ */
+function toolLabel(name) {
+  return TOOL_LABELS[name] || name;
+}
+
+/**
+ * @param {Array<{ name: string, ok?: boolean }>} tools
+ */
+function toolTrail(tools) {
+  const node = document.createElement("p");
+  node.className = "tool-trail";
+  const labels = tools.map((item) => {
+    const label = toolLabel(item.name);
+    return item.ok === false ? `${label}（未果）` : label;
+  });
+  node.textContent = `已调用：${labels.join(" · ")}`;
+  return node;
 }
 
 function previewOf(conversation) {

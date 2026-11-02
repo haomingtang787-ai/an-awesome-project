@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <title>诗窗</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-screen-webfont@1.7.0/style.css" />
+    <link rel="stylesheet" href="/fonts/lxgw/wenkai.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -38,6 +38,7 @@
         <form id="composer" class="composer">
           <label class="sr" for="draft">消息</label>
           <textarea id="draft" rows="1" placeholder="写下诗句，或问起格律与赏析"></textarea>
+          <button id="stop" class="stop" type="button" hidden>停止</button>
           <button id="send" type="submit">发送</button>
         </form>
       </main>

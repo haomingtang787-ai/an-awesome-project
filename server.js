@@ -9,12 +9,15 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, normalize, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import axios from "axios";
 import config, { assertConfig, saveConfig, keyEncrypted } from "./config.js";
-import { ReactAgent, POETRY_SYSTEM_PROMPT, formatRequestError } from "./agent.js";
+import { ReactAgent, POETRY_SYSTEM_PROMPT, formatRequestError, isAbortError } from "./agent.js";
 import { executeTool, getToolDefinitions } from "./tools.js";
 import { presentTurn } from "./lib/present.js";
 import { appRoot } from "./lib/paths.js";
+import { requestJson } from "./lib/http.js";
+
+/** 设为 1 时跳过 API 令牌校验，方便本机网页调试。桌面端仍会带令牌。 */
+const DEV_NO_TOKEN = process.env.SHICI_DEV_NO_TOKEN === "1";
 
 const bodyLimit = 1_500_000;
 
@@ -137,9 +140,37 @@ function readBody(req) {
 }
 
 /**
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} event
+ * @param {object} data
+ */
+function writeSse(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * @param {unknown} req
+ * @param {object} payload
+ */
+function wantsStream(req, payload) {
+  if (payload && payload.stream === true) return true;
+  const accept = String(req.headers?.accept || "");
+  return accept.includes("text/event-stream");
+}
+
+/**
+ * @param {Array<{ name: string, ok?: boolean }>} trace
+ */
+function toolsSummary(trace) {
+  return (Array.isArray(trace) ? trace : []).map((item) => ({
+    name: item.name,
+    ok: Boolean(item.ok),
+  }));
+}
+
+/**
  * @param {import("node:http").IncomingMessage} req
  * @param {import("node:http").ServerResponse} res
- * @param {string} publicDir
  */
 async function handleChat(req, res) {
   let payload;
@@ -168,10 +199,42 @@ async function handleChat(req, res) {
     return;
   }
 
+  const stream = wantsStream(req, payload);
   const history = sanitizeHistory(payload.history);
   const trace = [];
+  const ac = new AbortController();
+  let settled = false;
+  const onResponseClose = () => {
+    // 客户端断开或主动 abort fetch 时取消模型请求；正常结束时 settled 已为 true。
+    if (!settled) ac.abort();
+  };
+  res.on("close", onResponseClose);
+
+  if (stream) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    });
+  }
+
+  const emitProgress = (data) => {
+    if (stream && !res.writableEnded) writeSse(res, "progress", data);
+  };
+
   try {
     const answer = await agent.run(history, text, {
+      signal: ac.signal,
+      onRound(round) {
+        emitProgress({ kind: "round", round });
+      },
+      onThought(thought) {
+        const clipped = String(thought || "").trim().slice(0, 80);
+        if (clipped) emitProgress({ kind: "thought", text: clipped });
+      },
+      onToolCall(name) {
+        emitProgress({ kind: "tool", name });
+      },
       onToolResult(name, content) {
         let result = null;
         let ok = false;
@@ -182,15 +245,53 @@ async function handleChat(req, res) {
           ok = false;
         }
         trace.push({ name, ok, result });
+        emitProgress({ kind: "tool_done", name, ok });
+      },
+      onToolError(name) {
+        trace.push({ name, ok: false, result: null });
+        emitProgress({ kind: "tool_done", name, ok: false });
+      },
+      onMaxIterations(max) {
+        emitProgress({ kind: "max", max });
       },
     });
-    sendJson(res, 200, {
+    settled = true;
+    const body = {
       answer,
       history,
       presentation: presentTurn(trace),
-    });
+      tools: toolsSummary(trace),
+    };
+    if (stream) {
+      writeSse(res, "done", body);
+      res.end();
+    } else {
+      sendJson(res, 200, body);
+    }
   } catch (error) {
-    sendJson(res, 502, { error: formatRequestError(error) });
+    settled = true;
+    if (isAbortError(error) || ac.signal.aborted) {
+      if (stream) {
+        if (!res.writableEnded) {
+          writeSse(res, "error", { error: "已停止。" });
+          res.end();
+        }
+      } else if (!res.headersSent) {
+        sendJson(res, 499, { error: "已停止。" });
+      }
+      return;
+    }
+    const message = formatRequestError(error);
+    if (stream) {
+      if (!res.writableEnded) {
+        writeSse(res, "error", { error: message });
+        res.end();
+      }
+    } else {
+      sendJson(res, 502, { error: message });
+    }
+  } finally {
+    res.off("close", onResponseClose);
   }
 }
 
@@ -292,23 +393,17 @@ async function handleModels(req, res) {
   }
 
   try {
-    const response = await axios.get(`${baseUrl}/models`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 30000,
-      validateStatus: () => true,
+    const { status, data } = await requestJson(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      timeoutMs: 30000,
     });
-    if (response.status < 200 || response.status >= 300) {
-      const detail = typeof response.data === "object" && response.data
-        ? (response.data.error?.message || response.data.message || "")
+    if (status < 200 || status >= 300) {
+      const detail = typeof data === "object" && data
+        ? (data.error?.message || data.message || "")
         : "";
-      throw Object.assign(new Error(detail || `HTTP ${response.status}`), {
-        response: { status: response.status, data: response.data },
-      });
+      throw Object.assign(new Error(detail || `HTTP ${status}`), { status, data });
     }
-    const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+    const rows = Array.isArray(data?.data) ? data.data : [];
     const models = [];
     const seen = new Set();
     for (const row of rows) {
@@ -418,24 +513,23 @@ async function handleUpdateCheck(req, res) {
   }
 
   try {
-    const response = await axios.get(
+    const { status, data } = await requestJson(
       "https://api.github.com/repos/haomingtang787-ai/an-awesome-project/releases/latest",
       {
         headers: { "User-Agent": "shichuang", Accept: "application/vnd.github+json" },
-        timeout: 20000,
-        validateStatus: () => true,
+        timeoutMs: 20000,
       },
     );
-    if (response.status !== 200) {
-      sendJson(res, 502, { error: `查询更新失败（HTTP ${response.status}）。` });
+    if (status !== 200) {
+      sendJson(res, 502, { error: `查询更新失败（HTTP ${status}）。` });
       return;
     }
-    const latest = String(response.data?.tag_name || "").replace(/^v/i, "");
+    const latest = String(data?.tag_name || "").replace(/^v/i, "");
     sendJson(res, 200, {
       current,
       latest,
       hasUpdate: compareVersions(latest, current) > 0,
-      url: String(response.data?.html_url || ""),
+      url: String(data?.html_url || ""),
     });
   } catch (error) {
     sendJson(res, 502, { error: formatRequestError(error) });
@@ -465,8 +559,8 @@ export async function startServer(options = {}) {
           sendJson(res, 403, { error: "只接受本机访问。" });
           return;
         }
-        if (!hasValidToken(req, token)) {
-          sendJson(res, 401, { error: "缺少访问令牌，请通过诗窗客户端打开。" });
+        if (!DEV_NO_TOKEN && !hasValidToken(req, token)) {
+          sendJson(res, 401, { error: "缺少访问令牌。请用终端打印的完整地址打开（带 ?t=），或设置 SHICI_DEV_NO_TOKEN=1 做本机调试。" });
           return;
         }
       }
@@ -547,7 +641,12 @@ export async function startServer(options = {}) {
 
   const port = typeof address === "object" && address ? address.port : listenPort;
   if (!quiet) {
-    console.log(`诗窗已打开：http://${host}:${port}/?t=${token}`);
+    if (DEV_NO_TOKEN) {
+      console.log(`诗窗已打开：http://${host}:${port}/（已关闭令牌校验）`);
+    } else {
+      console.log(`诗窗已打开：http://${host}:${port}/?t=${token}`);
+      console.log("请用上面的完整地址打开；只开端口号会因缺少令牌无法调用接口。");
+    }
     console.log("命令行版本仍可用：npm run cli");
   }
 

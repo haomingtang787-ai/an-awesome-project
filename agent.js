@@ -6,7 +6,7 @@
  * 诗词系统提示词只是一份预设，换别的 Agent 时传入自己的 systemPrompt 与 tools 即可。
  */
 
-import axios from "axios";
+import { requestJson } from "./lib/http.js";
 
 /** 单次模型请求的超时时间。这不是密钥类配置，因此不放进 config.js。 */
 const REQUEST_TIMEOUT_MS = 120000;
@@ -87,71 +87,88 @@ function normalizeToolCalls(toolCalls) {
  * @returns {string}
  */
 export function formatRequestError(error) {
-  if (axios.isAxiosError(error)) {
-    if (error.response) {
-      const status = error.response.status;
-      const data = error.response.data;
-      let detail = "";
-      if (typeof data === "string") {
-        detail = data;
-      } else if (data && typeof data === "object" && data.error && typeof data.error.message === "string") {
-        detail = data.error.message;
-      } else if (data != null) {
-        try {
-          detail = JSON.stringify(data);
-        } catch {
-          detail = "";
-        }
+  if (error && typeof error === "object" && Number.isInteger(error.status)) {
+    const status = error.status;
+    const data = error.data;
+    let detail = "";
+    if (typeof data === "string") {
+      detail = data;
+    } else if (data && typeof data === "object" && data.error && typeof data.error.message === "string") {
+      detail = data.error.message;
+    } else if (data != null) {
+      try {
+        detail = JSON.stringify(data);
+      } catch {
+        detail = "";
       }
-      if (detail.length > 500) detail = `${detail.slice(0, 500)}…`;
+    }
+    if (detail.length > 500) detail = `${detail.slice(0, 500)}…`;
 
-      if (status === 401 || status === 403) {
-        return `模型服务拒绝了密钥（HTTP ${status}）。请检查接口设置里的密钥。${detail ? ` ${detail}` : ""}`;
-      }
-      if (status === 404) {
-        return `模型服务地址或模型名可能不正确（HTTP 404）。接口地址应类似 https://api.deepseek.com，不要带上 /chat/completions。${detail ? ` ${detail}` : ""}`;
-      }
-      if (status === 429) {
-        return `请求被限流或额度不足（HTTP 429）。${detail ? ` ${detail}` : ""}`;
-      }
-      return `模型服务返回错误（HTTP ${status}）。${detail}`.trim();
+    if (status === 401 || status === 403) {
+      return `模型服务拒绝了密钥（HTTP ${status}）。请检查接口设置里的密钥。${detail ? ` ${detail}` : ""}`;
     }
-
-    if (error.code === "ECONNABORTED") {
-      return "等待模型响应超时。请检查网络，或稍后再试。";
+    if (status === 404) {
+      return `模型服务地址或模型名可能不正确（HTTP 404）。接口地址应类似 https://api.deepseek.com，不要带上 /chat/completions。${detail ? ` ${detail}` : ""}`;
     }
-    if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED" || error.code === "EAI_AGAIN") {
-      return `无法连接模型服务（${error.code}）。请检查接口地址与当前网络。`;
+    if (status === 429) {
+      return `请求被限流或额度不足（HTTP 429）。${detail ? ` ${detail}` : ""}`;
     }
-    return `网络请求失败：${error.message}`;
+    return `模型服务返回错误（HTTP ${status}）。${detail}`.trim();
   }
 
+  if (error && (error.name === "TimeoutError" || error.code === "ETIMEDOUT" || error.code === "ECONNABORTED")) {
+    return "等待模型响应超时。请检查网络，或稍后再试。";
+  }
+  if (error && (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED" || error.code === "EAI_AGAIN")) {
+    return `无法连接模型服务（${error.code}）。请检查接口地址与当前网络。`;
+  }
   if (error instanceof Error) return error.message;
   return "请求模型时发生未知错误";
 }
 
 /**
- * 默认传输：POST {baseUrl}/chat/completions。
  * @param {object} payload
  * @param {{ apiKey: string, baseUrl: string }} runtimeConfig
+ * @param {AbortSignal} [signal]
  * @returns {Promise<object>}
  */
-async function defaultTransport(payload, runtimeConfig) {
+async function defaultTransport(payload, runtimeConfig, signal) {
   const base = String(runtimeConfig.baseUrl || "").replace(/\/+$/, "");
   const url = `${base}/chat/completions`;
 
   try {
-    const response = await axios.post(url, payload, {
-      timeout: REQUEST_TIMEOUT_MS,
+    const { status, data } = await requestJson(url, {
+      method: "POST",
+      body: payload,
+      signal,
+      timeoutMs: REQUEST_TIMEOUT_MS,
       headers: {
         Authorization: `Bearer ${runtimeConfig.apiKey}`,
-        "Content-Type": "application/json",
       },
     });
-    return response.data;
+    if (status < 200 || status >= 300) {
+      throw Object.assign(new Error(`HTTP ${status}`), { status, data });
+    }
+    return data;
   } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw Object.assign(new Error("请求已取消。"), { name: "AbortError" });
+    }
     throw new Error(formatRequestError(error));
   }
+}
+
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isAbortError(error) {
+  return Boolean(
+    error
+    && (error.name === "AbortError"
+      || error.code === "ERR_CANCELED"
+      || (typeof error.message === "string" && /aborted|取消|canceled/i.test(error.message))),
+  );
 }
 
 /**
@@ -213,6 +230,7 @@ export class ReactAgent {
    * @param {(name: string, content: string) => void} [hooks.onToolResult]
    * @param {(name: string, message: string) => void} [hooks.onToolError]
    * @param {(max: number) => void} [hooks.onMaxIterations]
+   * @param {AbortSignal} [hooks.signal]
    * @returns {Promise<string>}
    */
   async run(history, userText, hooks = {}) {
@@ -220,6 +238,7 @@ export class ReactAgent {
 
     const text = String(userText ?? "").trim();
     if (!text) throw new Error("用户输入为空。");
+    if (hooks.signal?.aborted) throw new DOMException("请求已取消。", "AbortError");
 
     this.ensureSystem(history);
     const start = history.length;
@@ -242,7 +261,8 @@ export class ReactAgent {
    */
   async reactLoop(history, hooks) {
     for (let round = 1; round <= this.maxIterations; round += 1) {
-      const message = await this.complete(history, true);
+      throwIfAborted(hooks.signal);
+      const message = await this.complete(history, true, hooks.signal);
       const toolCalls = normalizeToolCalls(message.tool_calls);
       const thought = normalizeContent(message.content).trim();
 
@@ -264,6 +284,7 @@ export class ReactAgent {
       history.push(assistantMessage);
 
       for (const call of toolCalls) {
+        throwIfAborted(hooks.signal);
         const observation = await this.observeToolCall(call, hooks);
         history.push({
           role: "tool",
@@ -274,7 +295,7 @@ export class ReactAgent {
     }
 
     hooks.onMaxIterations?.(this.maxIterations);
-    return this.closingAnswer(history);
+    return this.closingAnswer(history, hooks.signal);
   }
 
   /**
@@ -335,16 +356,18 @@ export class ReactAgent {
    * @param {Array<object>} history
    * @returns {Promise<string>}
    */
-  async closingAnswer(history) {
+  async closingAnswer(history, signal) {
     const fallback = `已达最大循环轮次（${this.maxIterations}），且未能完成收束作答。请把问题缩小后再问。`;
 
     try {
-      const message = await this.complete(history, false);
+      throwIfAborted(signal);
+      const message = await this.complete(history, false, signal);
       const answer = normalizeContent(message.content).trim();
       if (!answer) throw new Error("模型没有返回可显示的内容。");
       history.push({ role: "assistant", content: answer });
       return answer;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const reason = error instanceof Error ? error.message : String(error);
       const answer = `${fallback}（${reason}）`;
       history.push({ role: "assistant", content: answer });
@@ -356,9 +379,10 @@ export class ReactAgent {
    * 调用一次聊天补全接口。
    * @param {Array<object>} history
    * @param {boolean} allowTools
+   * @param {AbortSignal} [signal]
    * @returns {Promise<object>}
    */
-  async complete(history, allowTools) {
+  async complete(history, allowTools, signal) {
     if (!String(this.apiKey || "").trim()) {
       throw new Error("未配置 apiKey。请在页面的「接口设置」里填写。");
     }
@@ -368,6 +392,7 @@ export class ReactAgent {
     if (!String(this.baseUrl || "").trim()) {
       throw new Error("未配置 baseUrl。请在页面的「接口设置」里填写。");
     }
+    throwIfAborted(signal);
 
     const payload = {
       model: this.model,
@@ -384,7 +409,7 @@ export class ReactAgent {
       apiKey: this.apiKey,
       baseUrl: this.baseUrl,
       model: this.model,
-    });
+    }, signal);
 
     const message = data?.choices?.[0]?.message;
     if (!message || typeof message !== "object") {
@@ -392,4 +417,11 @@ export class ReactAgent {
     }
     return message;
   }
+}
+
+/**
+ * @param {AbortSignal} [signal]
+ */
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new DOMException("请求已取消。", "AbortError");
 }

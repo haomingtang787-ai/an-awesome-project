@@ -588,6 +588,16 @@ button {
   letter-spacing: 0.16em;
 }
 
+.composer button.stop {
+  color: var(--cinnabar);
+  border-color: color-mix(in srgb, var(--cinnabar) 45%, var(--line-strong));
+  background: rgba(250, 246, 239, 0.75);
+}
+
+.composer button.stop:hover {
+  background: rgba(143, 61, 54, 0.08);
+}
+
 .composer button:hover {
   background: rgba(250, 246, 239, 0.95);
   transform: translateY(-1px);
@@ -600,6 +610,29 @@ button {
   cursor: default;
   transform: none;
   box-shadow: none;
+}
+
+.assistant-turn {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 40em;
+}
+
+.tool-trail {
+  margin: 0;
+  padding: 0 2px 0 16px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.meter-card > .tool-trail {
+  margin-top: 10px;
+  padding-left: 0;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
 }
 
 .scrim { display: none; }

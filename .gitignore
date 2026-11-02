@@ -3,5 +3,6 @@ node_modules/
 .DS_Store
 config.local.json
 dist/
+dist-out/
 data/poems.json
 data/poems.json.gz

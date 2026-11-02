@@ -1,6 +1,6 @@
 {
   "name": "shichuang",
-  "version": "1.0.1",
+  "version": "1.1.2",
   "description": "Shichuang (诗窗): classical poetry desktop app, web debug server, and CLI",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   "scripts": {
     "help": "node scripts/npm-help.mjs",
     "desktop": "electron .",
-    "build:exe": "electron-builder --win portable",
+    "build:exe": "node scripts/build-exe.mjs",
     "start": "node server.js",
     "cli": "node cli.js",
     "test": "node --test test/",
@@ -18,12 +18,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "axios": "^1.7.9"
+    "opencc-js": "^1.4.2"
   },
   "devDependencies": {
     "electron": "^37.2.0",
-    "electron-builder": "^26.0.12",
-    "opencc-js": "^1.4.2"
+    "electron-builder": "^26.0.12"
   },
   "build": {
     "appId": "local.shichuang.app",
@@ -51,7 +50,7 @@
         "filter": [
           "**/*",
           "!**/SOURCES.txt",
-          "!**/poems.json.gz",
+          "!**/poems.json",
           "!**/*.tmp"
         ]
       },

@@ -534,7 +534,7 @@ function meterCard(card, answer) {
   fine.className = "fine";
   fine.textContent = card.variant === "ci"
     ? "平仄据平水韵，入声作仄。谱中「中」为可平可仄。韵脚不同部时不判出韵，词韵常更宽。"
-    : (card.note || "平仄据平水韵。入声在字下仍标「入」，粘对与拗救中作仄。五言一三、七言一三五通常可平可仄。");
+    : "平仄据平水韵。入声在字下仍标「入」，粘对与拗救中作仄。";
   wrap.append(fine);
   return wrap;
 }

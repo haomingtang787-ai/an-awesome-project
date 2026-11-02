@@ -299,7 +299,7 @@ registerTool(
     type: "function",
     function: {
       name: "findAoJiu",
-      description: "识别近体诗中的拗句与拗救。一三五不论之位标为可平可仄；二四六与句脚从严。另判孤平拗救、本句三拗四救、对句相救、三平调。用户要求核查拗救时，把整首诗按句传入。未收录的字不得补判。",
+      description: "识别近体诗中的拗句与拗救，包括三拗四救、孤平拗救和三平调。用户要求核查拗救时，把整首诗按句传入。未收录的字不得补判。",
       parameters: {
         type: "object",
         properties: {

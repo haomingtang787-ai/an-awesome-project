@@ -1,133 +1,167 @@
-# an-awesome-project
+# 古典诗词 ReAct Agent
 
-> **TODO:** Replace this sentence with a one- or two-line description of what the project does.
+古典诗词助手，主入口是桌面窗口「诗窗」，也可以用命令行。核查格律、查韵部收字、核对原诗、查典故出处时，模型按 ReAct 循环调用工具；品鉴、赏析和诗词闲聊则直接作答。格律结果是带表格的卡片，拗字用朱色标出；赏析和闲聊是普通文本。
 
-This repository is a new starter. Application source has not been added yet, so the sections below are placeholders for the owner to complete.
+引擎与诗词数据是分开的：`agent.js` 只负责「思考 → 调用工具 → 观测 → 再思考」，`tools.js` 登记格律与检索工具。以后要做别的 Agent，可以留着这套循环，换掉系统提示词和工具。
 
-## Features
+不依赖 LangChain、Vercel AI SDK，HTTP 只使用 axios。请求格式是 OpenAI 兼容的 function calling，可对接 GPT、Claude、Grok 等支持工具调用的模型。本程序不连接 QQ，也没有聊天平台适配。
 
-Nothing is implemented yet.
+## 你需要准备
 
-**Planned (TODO):**
+- Node.js 18 或更高版本
+- 一个 **支持 function calling（工具调用）** 的模型，以及它的 OpenAI 兼容接口地址和密钥
 
-- TODO: Describe the first feature.
-- TODO: Describe the second feature.
+模型若不支持工具调用，格律核查无法进行，接口通常会直接返回错误。
 
-## Getting started
-
-### Prerequisites
-
-**TODO:** List required tools and versions after a stack is chosen (for example, a language runtime or a package manager).
-
-### Installation
+## 安装
 
 ```bash
-# TODO: Add dependency-install steps after they exist.
-git clone https://github.com/haomingtang787-ai/an-awesome-project.git
-cd an-awesome-project
+npm install
 ```
 
-### Usage
+## 配置
 
-**TODO:** Document how to run the project and any common commands.
+在页面左侧打开「接口设置」。DeepSeek 的地址已经填好：`https://api.deepseek.com`。粘贴密钥后点「拉取模型」，从开放平台 `GET /models` 取当前可用名单，再选一个支持工具调用的模型保存。
+
+开发模式下这些值写入项目里的 `config.local.json`（已 git 忽略）。打包成 exe 后，密钥写在系统用户目录，不会进安装包。也可以直接编辑本地配置文件，例如：
+
+```json
+{
+  "apiKey": "你的密钥",
+  "baseUrl": "https://api.deepseek.com",
+  "model": "deepseek-flash",
+  "maxIterations": 8
+}
+```
+
+`model` 以你账号在开放平台返回的名单为准，不要沿用已经下线的旧名。
+
+| 字段 | 作用 |
+| --- | --- |
+| `apiKey` | 接口密钥 |
+| `baseUrl` | 接口根地址，例如 `https://api.openai.com/v1`。不要带 `/chat/completions`，程序会自己拼接 |
+| `model` | 模型名，必须支持 function calling |
+| `maxIterations` | 单轮里最多允许几轮工具调用，防止循环不停、耗尽额度。默认 `8` |
+
+`baseUrl` 的常见写法：
+
+- DeepSeek：`https://api.deepseek.com`
+- OpenAI：`https://api.openai.com/v1`
+- Grok：`https://api.x.ai/v1`
+- 其他兼容服务：填到版本前缀这一级即可
+
+留空保存密钥时，会沿用已经写在 `config.local.json` 里的密钥。
+
+## 启动
+
+先看命令说明：
 
 ```bash
-# TODO: Add the command that starts the app.
+npm run help
 ```
 
-## Project structure
+| Command | Meaning |
+| --- | --- |
+| `npm run desktop` | Open the desktop window (dev) |
+| `npm run build:exe` | Build `dist/诗窗.exe` |
+| `npm start` | Local web server only |
+| `npm run cli` | Terminal chat |
+| `npm run build:data` | Rebuild `data/` |
 
-The repository currently contains only starter files:
+产物在 `dist/诗窗.exe`。双击即可，不必再开浏览器。桌面快捷方式会优先启动这个 exe。
+
+网页调试打开后访问 `http://127.0.0.1:8787`。端口被占用时，PowerShell 里写 `$env:PORT=8788; npm start`。
+
+配置缺了 `apiKey`、`baseUrl` 或 `model` 时，窗口仍会打开，并提示先去填写；这时发送不会请求模型。
+
+命令行在配置不齐时会直接退出。输入 `exit` 退出。同一进程里的上下文只留在内存中。
+
+## 使用
+
+侧栏是过往对话。主区域里，你的话靠右，助手的赏析和闲聊靠左成段。近体诗格律会变成卡片：字下是平水韵声调，拗字为朱色，虚线是用来相救的字，下面有粘对、拗救和韵脚表。词律另有一式，按钦定词谱或龙榆生《唐宋词格律》标出不合谱的字。
+
+「新建对话」另开一则，原来的留在侧栏。「清空会话」只去掉正在看的这一则。对话记在本机，清掉应用数据后就没有了。
+
+分行的诗可以一次贴进输入框。Shift+Enter 换行，Enter 发送。
+
+模型自己决定走哪一种能力：
+
+1. **格律校验**。近体诗的平仄、粘对、拗救、韵脚，以及词牌的钦定词谱、龙榆生《唐宋词格律》，都必须调用工具，再按结果写出报告。
+2. **检索**。查某韵部收字、核对或索取原诗、查询典故出处或释义时，必须调用对应工具，不得凭记忆编造。
+3. **诗词品鉴与闲聊**。赏析、评价、聊诗人、聊意境，且不需要韵部收字、原诗正文或典故出处时，直接作答。
+
+示例：
 
 ```text
-.
-├── .gitignore    # Ignore rules for OS, editor, env, log, Node, and Python artifacts
-└── README.md     # This file
+请核查这首五言的平仄、粘对、拗救和韵脚：白日依山尽，黄河入海流。欲穷千里目，更上一层楼。
 ```
-
-**TODO:** Update this tree when source code, tests, and configuration are added.
-
-## Contributing
-
-Contributions are welcome once the project has a defined scope.
-
-1. Fork the repository and create a branch for your change.
-2. Make the change. If a test setup exists, add or update tests (**TODO:** name the test command).
-3. Open a pull request that explains what changed and why.
-
-**TODO:** Add code style, commit-message, and review expectations.
-
-## License
-
-No license is set yet. This repository does not include a `LICENSE` file. Until one is added, do not assume permission to use, modify, or distribute the project.
-
-**TODO:** Choose a license, add a `LICENSE` file, and replace this section.
-
----
-
-# 简体中文
-
-## 简介
-
-> **TODO：** 用一两句话说明这个项目做什么。
-
-本仓库是新建的起步项目，尚未加入应用源代码。下面各节是留给所有者填写的占位说明。
-
-## 功能
-
-目前还没有已实现的功能。
-
-**计划中（TODO）：**
-
-- TODO: 描述第一个功能。
-- TODO: 描述第二个功能。
-
-## 快速开始
-
-### 环境要求
-
-**TODO：** 选定技术栈后，列出所需工具及版本（例如某种语言运行时或包管理器）。
-
-### 安装
-
-```bash
-# TODO: 有依赖之后，补上安装步骤。
-git clone https://github.com/haomingtang787-ai/an-awesome-project.git
-cd an-awesome-project
-```
-
-### 使用
-
-**TODO：** 说明如何运行项目，以及常用命令。
-
-```bash
-# TODO: 填写启动应用的命令。
-```
-
-## 项目结构
-
-仓库目前只有起步文件：
 
 ```text
-.
-├── .gitignore    # 忽略系统、编辑器、环境变量、日志，以及 Node 与 Python 的构建和依赖产物
-└── README.md     # 本文件
+品评「孤舟蓑笠翁，独钓寒江雪」，从意境和炼字说。
 ```
 
-**TODO：** 加入源代码、测试和配置后，更新上面的目录树。
+```text
+近体诗里的入声，在平仄上怎么算？
+```
 
-## 参与贡献
+格律报告由模型根据工具观测来组织，风格从传统诗学，尽量克制。网络错误和工具执行失败会写在页面上，命令行里则打印在终端，并且不会把密钥打出来。单轮失败不会丢掉已经聊过的内容。
 
-项目范围明确之后，欢迎参与贡献。
+到达 `maxIterations` 后，程序停止继续提供工具，再请模型根据已拿到的观测作答。
 
-1. Fork 本仓库，并为修改新建分支。
-2. 完成修改。如果已有测试，请补充或更新测试（**TODO：** 写明测试命令）。
-3. 提交 Pull Request，说明改了什么以及原因。
+## 文件
 
-**TODO：** 补充代码风格、提交说明和评审要求。
+| 文件 | 职责 |
+| --- | --- |
+| `agent.js` | 通用 ReAct 循环，以及诗词系统提示词预设 |
+| `tools.js` | 格律与检索工具 |
+| `server.js` | 本地服务与 `/api/chat`，可被桌面端嵌入 |
+| `desktop/main.cjs` | Electron 主进程，打开诗窗桌面窗口 |
+| `public/` | 诗窗界面 |
+| `lib/present.js` | 把格律工具结果收成卡片数据 |
+| `cli.js` | 终端入口，保留多轮上下文 |
+| `config.js` | 读取配置。密钥写在 `config.local.json` 或用户目录 |
 
-## 许可证
+这些工具都读本地数据。查不到会写明未收录，这时模型不得补造。
 
-尚未设置许可证。仓库中没有 `LICENSE` 文件。在添加许可证之前，请不要假定可以随意使用、修改或分发本项目。
+| 工具 | 作用 | 结果 |
+| --- | --- | --- |
+| `getPingZe` | 查单字平水韵平仄 | 平 / 仄 / 入，多音并列 |
+| `checkNianDui` | 校验律诗联句的粘对 | 各处粘、对是否成立 |
+| `findAoJiu` | 识别拗句、拗救 | 三拗四救、孤平拗救、三平调 |
+| `checkYun` | 校验韵脚是否同属一个平水韵韵部 | 是否同部，以及韵部 |
+| `getRhythmBook` | 按韵部名称列出收字 | 该部全部收录字 |
+| `getPoemOriginal` | 按作者和诗题查原诗 | 正文 |
+| `getAllusion` | 按典故名或诗句关键词查典故 | 出处与释义 |
+| `checkCiPu` | 按钦定词谱或龙榆生《唐宋词格律》核对一首词 | 不合谱的字，以及韵脚的平水韵 |
 
-**TODO：** 选定许可证并添加 `LICENSE` 文件，然后替换本节。
+数据范围：
+
+- 平水韵约八千字。字表没有上声「三讲」。
+- 原诗收录全唐诗、全宋诗、宋词、诗经、楚辞。
+- 词谱来自 couyun 整理的钦定词谱与龙榆生《唐宋词格律》。声调用平水韵，入声作仄；「中」为可平可仄。词韵常宽于平水，韵脚不同部时不判出韵。
+- 典故来自古汉语典故资源库，出处和释义会截短。
+
+来源与许可写在 `data/SOURCES.txt`。重新生成数据：`npm run build:data`。
+
+## 复用这套引擎
+
+`ReactAgent` 不依赖诗词工具。换一份系统提示词和工具表即可：
+
+```javascript
+import config from "./config.js";
+import { ReactAgent } from "./agent.js";
+
+const agent = new ReactAgent({
+  config,
+  systemPrompt: "你是另一名助手。需要外部事实时调用工具，否则直接回答。",
+  tools: {
+    definitions: [],
+    execute: async () => "",
+  },
+});
+
+const history = [];
+const answer = await agent.run(history, "你好");
+```
+
+`history` 请由调用方保存，并在下一轮继续传入。

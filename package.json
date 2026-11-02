@@ -1,0 +1,82 @@
+{
+  "name": "shichuang",
+  "version": "1.0.0",
+  "description": "Shichuang (诗窗): classical poetry desktop app, web debug server, and CLI",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "help": "node scripts/npm-help.mjs",
+    "desktop": "electron .",
+    "build:exe": "electron-builder --win portable",
+    "start": "node server.js",
+    "cli": "node cli.js",
+    "build:data": "node scripts/build-data.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "axios": "^1.7.9"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "opencc-js": "^1.4.2"
+  },
+  "build": {
+    "appId": "local.shichuang.app",
+    "productName": "诗窗",
+    "copyright": "MIT",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "agent.js",
+      "cli.js",
+      "config.js",
+      "server.js",
+      "tools.js",
+      "desktop/**/*",
+      "lib/**/*",
+      "public/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data",
+        "filter": [
+          "**/*",
+          "!**/SOURCES.txt"
+        ]
+      },
+      {
+        "from": "scripts/shichuang.ico",
+        "to": "shichuang.ico"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "scripts/shichuang.ico",
+      "artifactName": "诗窗.exe"
+    },
+    "portable": {
+      "artifactName": "诗窗.exe"
+    }
+  },
+  "license": "MIT",
+  "allowScripts": {
+    "electron@37.10.3": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

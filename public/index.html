@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>诗窗</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside id="sidebar" class="sidebar">
+        <div class="brand">
+          <span class="seal" aria-hidden="true">诗</span>
+          <div>
+            <strong>诗窗</strong>
+            <em>格律 · 品鉴 · 闲谈</em>
+          </div>
+        </div>
+        <button id="new-chat" class="text-btn" type="button">新建对话</button>
+        <ol id="history" class="history"></ol>
+        <p class="side-note">对话记在本机。</p>
+        <button id="open-settings" class="text-btn" type="button">接口设置</button>
+        <button id="clear-chat" class="text-btn quiet" type="button">清空会话</button>
+      </aside>
+      <div id="scrim" class="scrim" hidden></div>
+      <main class="stage">
+        <header class="topbar">
+          <button id="open-sidebar" class="menu-btn" type="button" aria-label="打开对话列表">对话</button>
+          <h1 id="current-title">新的对话</h1>
+        </header>
+        <button id="banner" class="banner" type="button" hidden></button>
+        <div id="transcript" class="transcript">
+          <div id="thread" class="thread" role="log" aria-live="polite"></div>
+        </div>
+        <form id="composer" class="composer">
+          <label class="sr" for="draft">消息</label>
+          <textarea id="draft" rows="1" placeholder="写下诗句，或问起格律与赏析"></textarea>
+          <button id="send" type="submit">发送</button>
+        </form>
+      </main>
+    </div>
+
+    <div id="settings" class="modal" hidden>
+      <form id="settings-form" class="dialog settings-dialog">
+        <h2 id="settings-title">接口设置</h2>
+        <p>密钥只留在这台电脑，不会写进对话。</p>
+        <label>
+          密钥
+          <input id="cfg-key" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴 DeepSeek API Key" />
+        </label>
+        <p id="cfg-key-hint" class="fine"></p>
+        <label>
+          接口地址
+          <input id="cfg-base" type="url" spellcheck="false" value="https://api.deepseek.com" />
+        </label>
+        <div class="preset-row">
+          <button id="use-deepseek" class="text-btn" type="button">填入 DeepSeek</button>
+          <button id="fetch-models" class="text-btn" type="button">拉取模型</button>
+        </div>
+        <p class="fine">DeepSeek 地址是 https://api.deepseek.com 。填好密钥后点「拉取模型」，从开放平台取当前可用名单。地址不要带 /chat/completions。所选模型须支持工具调用。</p>
+        <label>
+          模型
+          <select id="cfg-model"></select>
+        </label>
+        <p id="cfg-model-hint" class="fine">先填写密钥并拉取模型列表。</p>
+        <label>
+          工具轮次
+          <input id="cfg-rounds" type="number" min="1" max="32" value="8" />
+        </label>
+        <p id="cfg-error" class="flash" hidden></p>
+        <div class="dialog-actions">
+          <button id="settings-cancel" class="text-btn" type="button">取消</button>
+          <button class="text-btn" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+    <div id="modal" class="modal" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">清空会话</h2>
+        <p>这一则对话会从侧栏去掉，无法恢复。其余对话还留着。</p>
+        <div class="dialog-actions">
+          <button id="modal-cancel" class="text-btn" type="button">留下</button>
+          <button id="modal-confirm" class="text-btn danger" type="button">清空</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

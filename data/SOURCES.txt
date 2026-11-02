@@ -1,0 +1,29 @@
+本地检索数据的来源。原文是古代文献，整理成可检索文件的许可如下。
+
+平水韵
+  文件：data/pingshui.json
+  来源：https://github.com/charlesix59/chinese_word_rhyme （Pingshui_Rhyme.json）
+  底本：维基文库《平水韵》
+  许可：MIT，见 data/licenses/chinese-word-rhyme.txt
+  这部字表没有「上声三讲」。查不到的字或韵部会返回未收录，不会补写。
+
+诗集
+  文件：data/poems.json
+  来源：https://github.com/chinese-poetry/chinese-poetry
+  收录：全唐诗、全宋诗、宋词、诗经、楚辞
+  全宋诗文件在上游仓库的「全唐诗」目录里，文件名是 poet.song.*.json
+  许可：MIT，见 data/licenses/chinese-poetry.txt
+
+词谱
+  文件：data/cipu.json
+  来源：https://github.com/hulbji/couyun
+  收录：钦定词谱，龙榆生《唐宋词格律》
+  许可：MIT，见 data/licenses/couyun.txt
+  声调仍用本目录的平水韵，入声作仄。谱中「中」为可平可仄。
+  韵脚只列平水韵。词韵常更宽，不同部不判出韵。
+
+典故
+  文件：data/allusions.json
+  来源：https://github.com/KaijieMo-kj/Ancient-Chinese-Allusion-Resource-Database
+  许可：MIT，见 data/licenses/allusion-database.txt
+  典源与释义按条目截短，避免单次工具结果过长。

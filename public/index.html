@@ -23,6 +23,7 @@
         <ol id="history" class="history"></ol>
         <p class="side-note">对话记在本机 · 字体霞鹜文楷</p>
         <button id="open-settings" class="text-btn" type="button">接口设置</button>
+        <button id="check-update" class="text-btn quiet" type="button">检查更新</button>
         <button id="clear-chat" class="text-btn quiet" type="button">清空会话</button>
       </aside>
       <div id="scrim" class="scrim" hidden></div>
@@ -32,6 +33,10 @@
           <h1 id="current-title">新的对话</h1>
         </header>
         <button id="banner" class="banner" type="button" hidden></button>
+        <div id="update-banner" class="update-banner" hidden>
+          <button id="update-open" class="update-open" type="button"></button>
+          <button id="update-dismiss" class="update-dismiss" type="button">稍后</button>
+        </div>
         <div id="transcript" class="transcript">
           <div id="thread" class="thread" role="log" aria-live="polite"></div>
         </div>

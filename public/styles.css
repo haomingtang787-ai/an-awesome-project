@@ -275,6 +275,52 @@ button {
 
 .banner:hover { background: rgba(250, 246, 239, 0.95); }
 
+.update-banner {
+  margin: 8px max(24px, 8%) 0;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  animation: rise-in 0.4s var(--ease) both;
+}
+
+.update-banner[hidden] { display: none; }
+
+.update-open {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--moss) 35%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--moss) 8%, var(--card));
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+  letter-spacing: 0.04em;
+  box-shadow: var(--shadow-soft);
+}
+
+.update-open:hover {
+  background: color-mix(in srgb, var(--moss) 14%, var(--card));
+}
+
+.update-dismiss {
+  flex: none;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(250, 246, 239, 0.75);
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+}
+
+.update-dismiss:hover {
+  background: rgba(250, 246, 239, 0.95);
+  color: var(--ink);
+}
+
+.side-note.update-status {
+  color: var(--moss);
+}
+
 .transcript {
   flex: 1;
   overflow: auto;

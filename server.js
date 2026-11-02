@@ -498,6 +498,14 @@ function compareVersions(a, b) {
   return 0;
 }
 
+const UPDATE_RELEASE_API = "https://api.github.com/repos/haomingtang787-ai/an-awesome-project/releases/latest";
+/** 国内直连 api.github.com 常失败时的回退地址（同一 JSON）。 */
+const UPDATE_RELEASE_MIRRORS = [
+  UPDATE_RELEASE_API,
+  "https://ghfast.top/" + UPDATE_RELEASE_API,
+  "https://mirror.ghproxy.com/" + UPDATE_RELEASE_API,
+];
+
 /**
  * 查一下 GitHub 上最新版是多少。离线时返回错误，不阻断使用。
  * @param {import("node:http").IncomingMessage} req
@@ -512,28 +520,53 @@ async function handleUpdateCheck(req, res) {
     // 读不到就按 0.0.0 处理
   }
 
-  try {
-    const { status, data } = await requestJson(
-      "https://api.github.com/repos/haomingtang787-ai/an-awesome-project/releases/latest",
-      {
+  let lastError = "查询更新失败。";
+  for (const endpoint of UPDATE_RELEASE_MIRRORS) {
+    try {
+      const { status, data } = await requestJson(endpoint, {
         headers: { "User-Agent": "shichuang", Accept: "application/vnd.github+json" },
-        timeoutMs: 20000,
-      },
-    );
-    if (status !== 200) {
-      sendJson(res, 502, { error: `查询更新失败（HTTP ${status}）。` });
+        timeoutMs: 15000,
+      });
+      if (status !== 200) {
+        lastError = `查询更新失败（HTTP ${status}）。`;
+        continue;
+      }
+      const latest = String(data?.tag_name || "").replace(/^v/i, "");
+      if (!latest) {
+        lastError = "开放平台没有返回版本号。";
+        continue;
+      }
+      const releaseUrl = String(data?.html_url || "")
+        || `https://github.com/haomingtang787-ai/an-awesome-project/releases/tag/v${latest}`;
+      const assets = Array.isArray(data?.assets) ? data.assets : [];
+      const exe = assets.find((item) => {
+        const name = String(item?.name || "");
+        return /win-x64\.exe$/i.test(name) || /诗窗\.exe$/i.test(name) || /\.exe$/i.test(name);
+      });
+      sendJson(res, 200, {
+        current,
+        latest,
+        hasUpdate: compareVersions(latest, current) > 0,
+        url: releaseUrl,
+        downloadUrl: String(exe?.browser_download_url || releaseUrl || ""),
+        name: String(data?.name || `诗窗 v${latest}`),
+        publishedAt: String(data?.published_at || ""),
+      });
       return;
+    } catch (error) {
+      const code = error && typeof error.code === "string" ? error.code : "";
+      if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "EAI_AGAIN" || code === "ETIMEDOUT") {
+        lastError = "无法连接 GitHub，请检查网络后再试。";
+      } else if (error && (error.name === "TimeoutError" || /超时/.test(String(error.message || "")))) {
+        lastError = "查询更新超时，请稍后再试。";
+      } else {
+        const detail = error instanceof Error ? error.message : String(error);
+        lastError = /fetch failed/i.test(detail) ? "无法连接 GitHub，请检查网络后再试。" : detail;
+      }
     }
-    const latest = String(data?.tag_name || "").replace(/^v/i, "");
-    sendJson(res, 200, {
-      current,
-      latest,
-      hasUpdate: compareVersions(latest, current) > 0,
-      url: String(data?.html_url || ""),
-    });
-  } catch (error) {
-    sendJson(res, 502, { error: formatRequestError(error) });
   }
+
+  sendJson(res, 502, { error: lastError });
 }
 
 /**

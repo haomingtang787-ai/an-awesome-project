@@ -1,4 +1,6 @@
 const STORAGE_KEY = "shici-window-v1";
+/** 用户点过「稍后」的版本号；同一版本不再自动弹出。 */
+const UPDATE_DISMISS_KEY = "shici-update-dismissed";
 
 /**
  * 本地服务的访问令牌。
@@ -39,11 +41,21 @@ const threadEl = document.querySelector("#thread");
 const transcriptEl = document.querySelector("#transcript");
 const titleEl = document.querySelector("#current-title");
 const bannerEl = document.querySelector("#banner");
+const updateBannerEl = document.querySelector("#update-banner");
+const updateOpenEl = document.querySelector("#update-open");
+const updateDismissEl = document.querySelector("#update-dismiss");
+const checkUpdateEl = document.querySelector("#check-update");
+const sideNoteEl = document.querySelector(".side-note");
 const draftEl = document.querySelector("#draft");
 const formEl = document.querySelector("#composer");
 const sendEl = document.querySelector("#send");
 const stopEl = document.querySelector("#stop");
 const modalEl = document.querySelector("#modal");
+
+/** @type {{ current: string, latest: string, url: string, downloadUrl?: string, name?: string } | null} */
+let pendingUpdate = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let statusTimer = null;
 
 const TOOL_LABELS = {
   getPingZe: "查平仄",
@@ -98,6 +110,12 @@ cfgKey.addEventListener("change", () => {
   if (cfgKey.value.trim()) fetchModels();
 });
 bannerEl.addEventListener("click", () => openSettings());
+checkUpdateEl.addEventListener("click", () => {
+  setSidebar(false);
+  checkUpdate({ quiet: false });
+});
+updateOpenEl.addEventListener("click", openUpdatePage);
+updateDismissEl.addEventListener("click", dismissUpdateBanner);
 settingsEl.addEventListener("click", (event) => {
   if (event.target === settingsEl) closeSettings();
 });
@@ -143,7 +161,7 @@ boot();
 function boot() {
   render();
   fitDraft();
-  loadReady();
+  loadReady().then(() => checkUpdate({ quiet: true }));
 }
 
 async function loadReady() {
@@ -160,6 +178,93 @@ async function loadReady() {
     bannerEl.textContent = "页面还没连上本地服务。";
     return null;
   }
+}
+
+/**
+ * 向 GitHub Releases 查询是否有比当前 package.json 更新的版本。
+ * @param {{ quiet?: boolean }} [options]
+ */
+async function checkUpdate(options = {}) {
+  const quiet = Boolean(options.quiet);
+  checkUpdateEl.disabled = true;
+  if (!quiet) setUpdateStatus("正在查询 GitHub…");
+  try {
+    const response = await fetch("/api/update");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (!quiet) setUpdateStatus(data.error || "查询更新失败。");
+      return;
+    }
+    pendingUpdate = {
+      current: String(data.current || ""),
+      latest: String(data.latest || ""),
+      url: String(data.url || ""),
+      downloadUrl: String(data.downloadUrl || data.url || ""),
+      name: String(data.name || ""),
+    };
+    if (data.hasUpdate && pendingUpdate.latest) {
+      showUpdateBanner(pendingUpdate, { force: !quiet });
+      if (!quiet) setUpdateStatus(`发现新版本 ${pendingUpdate.latest}`);
+    } else {
+      hideUpdateBanner();
+      if (!quiet) setUpdateStatus(`已是最新版 ${pendingUpdate.current || ""}`.trim());
+    }
+  } catch {
+    if (!quiet) setUpdateStatus("无法连接更新服务，请检查网络。");
+  } finally {
+    checkUpdateEl.disabled = false;
+  }
+}
+
+/**
+ * @param {{ current: string, latest: string, url: string, name?: string }} info
+ * @param {{ force?: boolean }} [options]
+ */
+function showUpdateBanner(info, options = {}) {
+  const dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || "";
+  if (!options.force && dismissed === info.latest) {
+    hideUpdateBanner();
+    return;
+  }
+  pendingUpdate = info;
+  updateOpenEl.textContent = `有新版本 ${info.latest}（当前 ${info.current}）。点此打开 GitHub 下载页`;
+  updateBannerEl.hidden = false;
+}
+
+function hideUpdateBanner() {
+  updateBannerEl.hidden = true;
+}
+
+function dismissUpdateBanner() {
+  if (pendingUpdate?.latest) {
+    localStorage.setItem(UPDATE_DISMISS_KEY, pendingUpdate.latest);
+  }
+  hideUpdateBanner();
+  setUpdateStatus("已忽略此版本提醒");
+}
+
+function openUpdatePage() {
+  // 优先打开 Release 页，方便看说明；直链 exe 作为后备。
+  const target = pendingUpdate?.url || pendingUpdate?.downloadUrl;
+  if (!target) return;
+  window.open(target, "_blank", "noopener,noreferrer");
+}
+
+/**
+ * @param {string} text
+ */
+function setUpdateStatus(text) {
+  if (!sideNoteEl) return;
+  if (statusTimer) clearTimeout(statusTimer);
+  const original = sideNoteEl.dataset.original || sideNoteEl.textContent || "";
+  if (!sideNoteEl.dataset.original) sideNoteEl.dataset.original = original;
+  sideNoteEl.textContent = text;
+  sideNoteEl.classList.add("update-status");
+  statusTimer = setTimeout(() => {
+    sideNoteEl.textContent = sideNoteEl.dataset.original || original;
+    sideNoteEl.classList.remove("update-status");
+    statusTimer = null;
+  }, 4200);
 }
 
 async function openSettings() {

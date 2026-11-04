@@ -421,7 +421,7 @@ button {
   font-size: 14px;
 }
 
-.pending::after {
+div.pending::after {
   content: "···";
   display: inline-block;
   overflow: hidden;
@@ -578,7 +578,8 @@ button {
 
 .meter-table .fault { color: var(--cinnabar); }
 .meter-table .ok { color: var(--moss); }
-.meter-table .pending { color: var(--ink-soft); animation: none; }
+.meter-table .pending,
+.meter-table .muted { color: var(--ink-soft); animation: none; }
 
 .meter-note {
   margin: 16px 0 4px;

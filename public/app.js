@@ -796,7 +796,7 @@ function appendCi(wrap, card) {
     }
     const summary = document.createElement("tr");
     const verdict = group.same === true ? "平水同部" : group.same === false ? "平水不同部" : "未定";
-    const cls = group.same === true ? "ok" : group.same === false ? "pending" : "pending";
+    const cls = group.same === true ? "ok" : "muted";
     const note = group.same === false ? "词韵常宽于平水，此处不判出韵。" : "";
     summary.append(cell(verdict, cls), cell(note));
     rhymes.append(summary);
@@ -885,7 +885,7 @@ function appendYun(wrap, yun) {
   }
   const summary = document.createElement("tr");
   const verdict = yun.sameRhyme === true ? "同部" : yun.sameRhyme === false ? "不同部" : "未定";
-  const cls = yun.sameRhyme === true ? "ok" : yun.sameRhyme === false ? "fault" : "pending";
+  const cls = yun.sameRhyme === true ? "ok" : yun.sameRhyme === false ? "fault" : "muted";
   summary.append(cell(verdict, cls), cell(yun.detail || (yun.rhyme || []).join("、")));
   table.append(summary);
   wrap.append(table);
@@ -929,7 +929,7 @@ function cell(text, className = "", tag = "td") {
  */
 function toneClass(result) {
   if (result === "对" || result === "粘") return "ok";
-  if (result === "未决" || result === "缺字") return "pending";
+  if (result === "未决" || result === "缺字") return "muted";
   return "fault";
 }
 

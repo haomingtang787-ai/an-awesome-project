@@ -172,7 +172,7 @@ export async function main() {
 
   if (interactive) {
     console.log("古典诗词助手");
-    console.log("可做格律校验、诗词品鉴，也可闲谈诗人、典故与格律常识。");
+    console.log("可查格律、陪你逐处改诗，也可润色旧稿、品鉴诗艺、闲谈诗人与典故。");
     console.log("本会话会记住上文。诗若分行，请一次粘贴。输入 exit 退出。");
     console.log("格律、原诗和典故都查本地韵书与诗集。词律另有钦定词谱和龙榆生《唐宋词格律》。查无此条时会说明未收录。");
     console.log();

@@ -255,7 +255,7 @@ registerTool(
     type: "function",
     function: {
       name: "getPingZe",
-      description: "查询单个汉字在平水韵中的平仄。多音多调会全部返回；只有一种声调时 tone 为「平」「仄」或「入」。仅在核查格律时调用，一次只查一个字。未收录则不得编造。",
+      description: "查询单个汉字在平水韵中的平仄。多音多调会全部返回；只有一种声调时 tone 为「平」「仄」或「入」。仅在用户单独询问某字平仄，或终检时确需确认一两个多音字时调用。作诗填词与润色不要逐字调用；整篇核查请用 checkNianDui、findAoJiu 或 checkCiPu。未收录则不得编造。",
       parameters: {
         type: "object",
         properties: {
@@ -276,7 +276,7 @@ registerTool(
     type: "function",
     function: {
       name: "checkNianDui",
-      description: "校验近体诗相邻诗句是否符合粘对。对：一联之内两句第二字平仄相反；粘：下一联出句与上一联对句第二字平仄相同。入声作仄。请按诵读顺序传入全部诗句，不要带诗题。未收录的字不得补判。",
+      description: "校验近体诗相邻诗句是否符合粘对。对：一联之内两句第二字平仄相反；粘：下一联出句与上一联对句第二字平仄相同。入声作仄。用于整篇检查与每轮改后复核：请按诵读顺序一次传入当前全篇，不要带诗题。陪用户改时先小改原句，一处确实救不回来再整句替换；不要为迁就格律逐字试改，也不要擅自重写全诗。未收录的字不得补判。",
       parameters: {
         type: "object",
         properties: {
@@ -299,7 +299,7 @@ registerTool(
     type: "function",
     function: {
       name: "findAoJiu",
-      description: "识别近体诗中的拗句与拗救，包括三拗四救、孤平拗救和三平调。用户要求核查拗救时，把整首诗按句传入。未收录的字不得补判。",
+      description: "识别近体诗中的拗句与拗救，包括三拗四救、孤平拗救和三平调。用户要求核查拗救，或整篇检查与改后复核时，把当前全篇按句传入。出律时先试小改原句，一句确实救不回来再整句替换；不要只换一个字交差，也不要擅自重写全诗。未收录的字不得补判。",
       parameters: {
         type: "object",
         properties: {
@@ -322,7 +322,7 @@ registerTool(
     type: "function",
     function: {
       name: "checkYun",
-      description: "校验若干韵脚字是否属于同一个平水韵韵部。按出现顺序传入韵脚。多音字会先求各字韵部的交集，不要先假定一个读音。未收录则不得编造韵部。",
+      description: "校验若干韵脚字是否属于同一个平水韵韵部。按出现顺序传入韵脚。多音字会先求各字韵部的交集，不要先假定一个读音。用于整篇检查与改后复核，或用户单纯问韵脚；陪改时不要一边逐字凑韵一边调用。未收录则不得编造韵部。",
       parameters: {
         type: "object",
         properties: {
@@ -345,7 +345,7 @@ registerTool(
     type: "function",
     function: {
       name: "getRhythmBook",
-      description: "输入平水韵韵部名称，返回该韵部收录的全部字。例如「上平一东」或「七阳」。用户询问某韵部有哪些字时必须调用。未收录不得编造收字。",
+      description: "输入平水韵韵部名称，返回该韵部收录的全部字。用户明确询问某韵部有哪些字时必须调用；创作选韵不必整表拉取。未收录不得编造收字。",
       parameters: {
         type: "object",
         properties: {
@@ -412,7 +412,7 @@ registerTool(
     type: "function",
     function: {
       name: "checkCiPu",
-      description: "按钦定词谱或龙榆生《唐宋词格律》核对一首词的平仄。声调用平水韵，入声作仄；谱中「中」为可平可仄。用户核对词律时必须调用。未收录的词牌或字不得编造。未指定词谱时不要传 book，由工具自选字数相符的一格。",
+      description: "按钦定词谱或龙榆生《唐宋词格律》核对一首词的平仄。声调用平水韵，入声作仄；谱中「中」为可平可仄。用于整词检查与改后复核。用户核对词律时必须调用；作词或陪改时先把当前全词改定，再传全词复核。未收录的词牌或字不得编造。未指定词谱时不要传 book，由工具自选字数相符的一格。",
       parameters: {
         type: "object",
         properties: {

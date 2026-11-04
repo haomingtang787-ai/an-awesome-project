@@ -169,6 +169,22 @@ function toolsSummary(trace) {
 }
 
 /**
+ * 判断这一轮更像创作、润色陪改还是纯格律校验。只用于前端呈现：
+ * 创作时诗作排在卡片之前；润色陪改时卡片先出、建议后随。
+ * @param {string} text
+ * @returns {"create" | "polish" | "check" | "auto"}
+ */
+function detectTask(text) {
+  const value = String(text || "");
+  if (/润色|修改|改写|重写|改一改|改一下|改改|帮我改|陪我|逐处|推敲|改到|改好|怎么改|如何改|锤炼|打磨|炼字/.test(value)) return "polish";
+  if (/创作|作一首|写一首|拟一首|填一首|题一首|来一首|作首|写首|拟首|填首|作一阕|填一阕|写一阕|以.{1,12}为题/.test(value)) {
+    return "create";
+  }
+  if (/核查|校验|检查|平仄|格律|粘对|拗救|韵脚|词谱|词律|入声|用韵|押韵/.test(value)) return "check";
+  return "auto";
+}
+
+/**
  * @param {import("node:http").IncomingMessage} req
  * @param {import("node:http").ServerResponse} res
  */
@@ -259,7 +275,7 @@ async function handleChat(req, res) {
     const body = {
       answer,
       history,
-      presentation: presentTurn(trace),
+      presentation: presentTurn(trace, { task: detectTask(text) }),
       tools: toolsSummary(trace),
     };
     if (stream) {
@@ -303,6 +319,8 @@ const HISTORY_CHAR_BUDGET = 24000;
 
 /**
  * 整理前端回传的历史：
+ * - 丢掉客户端带来的 system 消息。系统提示词始终由服务端提供，
+ *   这样提示词更新能立刻作用于旧对话，客户端也无法自行注入系统指令；
  * - 只留最近 80 条；
  * - 较早的大段工具观测（韵部字表、诗集正文）折叠成占位，避免每轮重复上传；
  * - 总字数超预算时，继续从最早的非工具消息开始折叠。
@@ -313,7 +331,7 @@ const HISTORY_CHAR_BUDGET = 24000;
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
   const rows = history
-    .filter((item) => item && typeof item === "object")
+    .filter((item) => item && typeof item === "object" && item.role !== "system")
     .map((item) => ({ ...item }))
     .slice(-80);
 

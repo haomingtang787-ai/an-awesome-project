@@ -22,8 +22,12 @@ const accessToken = new URLSearchParams(location.search).get("t") || "";
 
 const EXAMPLES = [
   {
-    label: "核查绝句",
-    text: "请核查这首五言的平仄、粘对、拗救和韵脚：白日依山尽，黄河入海流。欲穷千里目，更上一层楼。",
+    label: "查律陪改",
+    text: "先帮我查这首诗的平仄、粘对、拗救和韵脚，再陪我逐处改到合律，尽量保留原意。\n夜雨打窗急，孤灯照客愁。\n家书久未至，梦里到江楼。",
+  },
+  {
+    label: "拟作七绝",
+    text: "以「秋夜听雨」为题，作一首七言绝句。先立意谋篇，定稿前再用格律工具终检。",
   },
   {
     label: "品评一句",
@@ -587,9 +591,25 @@ function renderThread() {
       if (message.role === "user") {
         threadEl.append(block("bubble-user", message.content));
       } else if (message.presentation?.type === "meter") {
-        const card = meterCard(message.presentation, message.content);
-        if (message.tools?.length) card.append(toolTrail(message.tools));
-        threadEl.append(card);
+        const card = message.presentation;
+        if (card.answerBeforeCard && message.content) {
+          const wrap = document.createElement("div");
+          wrap.className = "assistant-turn";
+          wrap.append(block("bubble-text", message.content));
+          threadEl.append(wrap);
+        }
+        const meter = meterCard(
+          card,
+          card.answerBeforeCard || card.answerAfterCard ? "" : message.content,
+        );
+        if (message.tools?.length) meter.append(toolTrail(message.tools));
+        threadEl.append(meter);
+        if (card.answerAfterCard && message.content) {
+          const wrap = document.createElement("div");
+          wrap.className = "assistant-turn";
+          wrap.append(block("bubble-text", message.content));
+          threadEl.append(wrap);
+        }
       } else {
         const wrap = document.createElement("div");
         wrap.className = "assistant-turn";
@@ -618,7 +638,7 @@ function emptyState() {
   quote.textContent = "欲穷千里目\n更上一层楼";
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "格律落成表，赏析仍是闲谈。";
+  hint.textContent = "先查格律，再逐处推敲，改到定稿。";
   const examples = document.createElement("div");
   examples.className = "examples";
   for (const example of EXAMPLES) {

@@ -1,6 +1,6 @@
 {
   "name": "shichuang",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Shichuang (诗窗): classical poetry desktop app, web debug server, and CLI",
   "private": true,
   "type": "module",

@@ -5,6 +5,7 @@
  */
 
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, normalize, resolve, sep } from "node:path";
@@ -63,6 +64,16 @@ const DEEPSEEK = {
   baseUrl: "https://api.deepseek.com",
 };
 
+/** 当前应用版本。页面左下角显示，更新检查也拿它做基准。 */
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(appRoot(), "package.json"), "utf8"));
+    return String(pkg.version || "");
+  } catch {
+    return "";
+  }
+})();
+
 const agent = new ReactAgent({
   config,
   systemPrompt: POETRY_SYSTEM_PROMPT,
@@ -93,6 +104,7 @@ function settingsView() {
   const key = String(config.apiKey || "").trim();
   return {
     ready,
+    version: APP_VERSION,
     baseUrl: config.baseUrl,
     model: config.model,
     maxIterations: config.maxIterations,
@@ -530,13 +542,7 @@ const UPDATE_RELEASE_MIRRORS = [
  * @param {import("node:http").ServerResponse} res
  */
 async function handleUpdateCheck(req, res) {
-  let current = "0.0.0";
-  try {
-    const pkg = JSON.parse(await readFile(resolve(appRoot(), "package.json"), "utf8"));
-    current = String(pkg.version || current);
-  } catch {
-    // 读不到就按 0.0.0 处理
-  }
+  const current = APP_VERSION || "0.0.0";
 
   let lastError = "查询更新失败。";
   for (const endpoint of UPDATE_RELEASE_MIRRORS) {

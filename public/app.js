@@ -49,6 +49,8 @@ const updateBannerEl = document.querySelector("#update-banner");
 const updateOpenEl = document.querySelector("#update-open");
 const updateDismissEl = document.querySelector("#update-dismiss");
 const checkUpdateEl = document.querySelector("#check-update");
+const appVersionEl = document.querySelector("#app-version");
+const versionUpdateEl = document.querySelector("#version-update");
 const sideNoteEl = document.querySelector(".side-note");
 const draftEl = document.querySelector("#draft");
 const formEl = document.querySelector("#composer");
@@ -120,6 +122,7 @@ checkUpdateEl.addEventListener("click", () => {
 });
 updateOpenEl.addEventListener("click", openUpdatePage);
 updateDismissEl.addEventListener("click", dismissUpdateBanner);
+versionUpdateEl.addEventListener("click", openUpdatePage);
 settingsEl.addEventListener("click", (event) => {
   if (event.target === settingsEl) closeSettings();
 });
@@ -176,6 +179,10 @@ async function loadReady() {
     if (!data.ready) {
       bannerEl.textContent = "接口还没配好。点这里填写 DeepSeek 密钥。";
     }
+    if (appVersionEl) {
+      appVersionEl.textContent = data.version ? `v${data.version}` : "v—";
+      appVersionEl.title = data.version ? `当前版本 ${data.version}` : "当前版本未知";
+    }
     return data;
   } catch {
     bannerEl.hidden = false;
@@ -207,9 +214,11 @@ async function checkUpdate(options = {}) {
       name: String(data.name || ""),
     };
     if (data.hasUpdate && pendingUpdate.latest) {
+      showUpdateBadge(pendingUpdate);
       showUpdateBanner(pendingUpdate, { force: !quiet });
       if (!quiet) setUpdateStatus(`发现新版本 ${pendingUpdate.latest}`);
     } else {
+      hideUpdateBadge();
       hideUpdateBanner();
       if (!quiet) setUpdateStatus(`已是最新版 ${pendingUpdate.current || ""}`.trim());
     }
@@ -237,6 +246,24 @@ function showUpdateBanner(info, options = {}) {
 
 function hideUpdateBanner() {
   updateBannerEl.hidden = true;
+}
+
+/**
+ * 左下角的常驻更新徽标。即使点了顶部提醒的「稍后」，这里仍保留入口。
+ * @param {{ current: string, latest: string }} info
+ */
+function showUpdateBadge(info) {
+  if (!versionUpdateEl) return;
+  versionUpdateEl.hidden = false;
+  versionUpdateEl.textContent = `可更新 v${info.latest}`;
+  versionUpdateEl.title = `当前 v${info.current}，点击打开下载页`;
+}
+
+function hideUpdateBadge() {
+  if (!versionUpdateEl) return;
+  versionUpdateEl.hidden = true;
+  versionUpdateEl.textContent = "";
+  versionUpdateEl.removeAttribute("title");
 }
 
 function dismissUpdateBanner() {

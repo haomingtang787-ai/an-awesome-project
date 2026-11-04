@@ -321,6 +321,41 @@ button {
   color: var(--moss);
 }
 
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.app-version {
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.version-update {
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--moss) 44%, var(--line-strong));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--moss) 9%, var(--card));
+  color: var(--moss);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.version-update:hover {
+  background: color-mix(in srgb, var(--moss) 16%, var(--card));
+}
+
+.version-update[hidden] {
+  display: none;
+}
+
 .transcript {
   flex: 1;
   overflow: auto;

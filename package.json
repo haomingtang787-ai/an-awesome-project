@@ -1,6 +1,6 @@
 {
   "name": "shichuang",
-  "version": "1.1.6",
+  "version": "1.2.0",
   "description": "Shichuang (诗窗): classical poetry desktop app, web debug server, and CLI",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "build:exe": "node scripts/build-exe.mjs",
     "start": "node server.js",
     "cli": "node cli.js",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "build:data": "node scripts/build-data.mjs"
   },
   "engines": {

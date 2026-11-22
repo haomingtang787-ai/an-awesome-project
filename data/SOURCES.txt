@@ -5,7 +5,16 @@
   来源：https://github.com/charlesix59/chinese_word_rhyme （Pingshui_Rhyme.json）
   底本：维基文库《平水韵》
   许可：MIT，见 data/licenses/chinese-word-rhyme.txt
-  这部字表没有「上声三讲」。查不到的字或韵部会返回未收录，不会补写。
+  共 106 部：上平 15、下平 15、上声 29、去声 30、入声 17。
+  上游字表缺「上声三讲」，本地按通行韵表补入「讲港棒蚌项耩」六字。
+  查不到的字或韵部会返回未收录，不会补写。
+
+词林正韵
+  文件：data/cilin.json
+  来源：https://github.com/charlesix59/chinese_word_rhyme （Cilin_Rhyme.json）
+  许可：MIT，见 data/licenses/chinese-word-rhyme.txt
+  共十九部，按平声、仄声、入声分列；仄声含上声与去声。
+  填词押韵用这部。平声、仄声、入声各自同部可通押；平仄混押要看词牌是否允许转韵。
 
 诗集
   文件：data/poems.json
@@ -13,6 +22,7 @@
   收录：全唐诗、全宋诗、宋词、诗经、楚辞
   全宋诗文件在上游仓库的「全唐诗」目录里，文件名是 poet.song.*.json
   许可：MIT，见 data/licenses/chinese-poetry.txt
+  语句检索与语义近似检索都在运行时就地扫描这部诗集，不另建索引文件。
 
 词谱
   文件：data/cipu.json
@@ -20,7 +30,7 @@
   收录：钦定词谱，龙榆生《唐宋词格律》
   许可：MIT，见 data/licenses/couyun.txt
   声调仍用本目录的平水韵，入声作仄。谱中「中」为可平可仄。
-  韵脚只列平水韵。词韵常更宽，不同部不判出韵。
+  韵脚并列平水韵与词林正韵；词韵同部可通押，平仄混押须看词牌。
 
 典故
   文件：data/allusions.json

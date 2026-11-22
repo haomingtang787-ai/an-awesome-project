@@ -67,10 +67,13 @@ const TOOL_LABELS = {
   getPingZe: "查平仄",
   checkNianDui: "查粘对",
   findAoJiu: "查拗救",
-  checkYun: "查韵脚",
+  checkYun: "查诗韵",
+  checkCiYun: "查词韵",
   getRhythmBook: "查韵部",
   getPoemOriginal: "查原诗",
   getAllusion: "查典故",
+  searchPoemLines: "检索诗句",
+  searchPoemMeaning: "近似检索",
   checkCiPu: "查词谱",
 };
 const settingsEl = document.querySelector("#settings");
@@ -637,6 +640,17 @@ function renderThread() {
           wrap.append(block("bubble-text", message.content));
           threadEl.append(wrap);
         }
+      } else if (message.presentation?.type === "search") {
+        const card = message.presentation;
+        const search = searchCard(card, card.answerAfterCard ? "" : message.content);
+        if (message.tools?.length) search.append(toolTrail(message.tools));
+        threadEl.append(search);
+        if (card.answerAfterCard && message.content) {
+          const wrap = document.createElement("div");
+          wrap.className = "assistant-turn";
+          wrap.append(block("bubble-text", message.content));
+          threadEl.append(wrap);
+        }
       } else {
         const wrap = document.createElement("div");
         wrap.className = "assistant-turn";
@@ -729,8 +743,88 @@ function meterCard(card, answer) {
   const fine = document.createElement("p");
   fine.className = "fine";
   fine.textContent = card.variant === "ci"
-    ? "平仄据平水韵，入声作仄。谱中「中」为可平可仄。韵脚不同部时不判出韵，词韵常更宽。"
+    ? "平仄据平水韵，入声作仄。谱中「中」为可平可仄。韵脚并列平水韵与《词林正韵》；词韵同部可通押，平仄混押须看词牌。"
     : "平仄据平水韵。入声在字下仍标「入」，粘对与拗救中作仄。";
+  wrap.append(fine);
+  return wrap;
+}
+
+/**
+ * 检索结果卡片。
+ * @param {object} card
+ * @param {string} answer
+ */
+function searchCard(card, answer) {
+  const wrap = document.createElement("article");
+  wrap.className = "meter-card search-card";
+
+  const head = document.createElement("div");
+  head.className = "meter-head";
+  const kicker = document.createElement("span");
+  kicker.className = "meter-kicker";
+  kicker.textContent = card.variant === "meaning" ? "语义近似" : "语句检索";
+  head.append(kicker);
+  const form = document.createElement("span");
+  form.className = "meter-form";
+  form.textContent = card.themes?.length
+    ? `「${card.query}」· ${card.themes.join("、")}`
+    : `「${card.query}」`;
+  head.append(form);
+  wrap.append(head);
+
+  if (!card.items?.length) {
+    const note = document.createElement("p");
+    note.className = "fine";
+    note.textContent = card.detail || "没有找到相近的句子。";
+    wrap.append(note);
+  } else {
+    const list = document.createElement("div");
+    list.className = "search-list";
+    for (const item of card.items) {
+      const row = document.createElement("div");
+      row.className = "search-item";
+
+      const line = document.createElement("p");
+      line.className = "search-line";
+      line.textContent = item.match === "title" && !item.line ? `《${item.title}》` : item.line;
+      row.append(line);
+
+      const meta = document.createElement("p");
+      meta.className = "search-meta";
+      const parts = [item.author, item.title ? `《${item.title}》` : "", item.source];
+      if (item.score !== null) parts.push(`相近度 ${item.score}`);
+      meta.textContent = parts.filter(Boolean).join(" · ");
+      row.append(meta);
+
+      if (item.cues?.length) {
+        const cues = document.createElement("p");
+        cues.className = "search-cues";
+        cues.textContent = `意象：${item.cues.join("、")}`;
+        row.append(cues);
+      }
+      if (item.before || item.after) {
+        const context = document.createElement("p");
+        context.className = "search-context";
+        context.textContent = [item.before, item.after].filter(Boolean).join(" / ");
+        row.append(context);
+      }
+      list.append(row);
+    }
+    wrap.append(list);
+  }
+
+  if (answer) {
+    const note = document.createElement("div");
+    note.className = "meter-note";
+    note.textContent = answer;
+    wrap.append(note);
+  }
+
+  const fine = document.createElement("p");
+  fine.className = "fine";
+  fine.textContent = card.variant === "meaning"
+    ? "按主题意象与字面重合度排序，属近似检索，不是严格语义判断。引用前宜核对原句。"
+    : "按字面检索，原文照录；繁简与标点已兼容。";
   wrap.append(fine);
   return wrap;
 }
@@ -834,18 +928,27 @@ function appendCi(wrap, card) {
 
   for (const group of card.rhymeGroups || []) {
     wrap.append(heading(group.label || "韵脚"));
-    const rhymes = tableWith(["字", "平水韵"]);
+    const rhymes = tableWith(["字", "平水韵", "词林正韵"]);
     for (const foot of group.feet || []) {
       const tr = document.createElement("tr");
       const name = foot.xie ? `${foot.char}（协）` : foot.char;
-      tr.append(cell(name || ""), cell((foot.rhymes || []).join("、") || "未收"));
+      tr.append(
+        cell(name || ""),
+        cell((foot.rhymes || []).join("、") || "未收"),
+        cell((foot.ciRhymes || []).join("、") || "未收"),
+      );
       rhymes.append(tr);
     }
     const summary = document.createElement("tr");
-    const verdict = group.same === true ? "平水同部" : group.same === false ? "平水不同部" : "未定";
+    const verdict = group.same === true ? "同部" : group.same === false ? "不同部" : "未定";
+    const ciVerdict = group.sameCi === true ? "同部" : group.sameCi === false ? "不同部" : "未定";
     const cls = group.same === true ? "ok" : "muted";
-    const note = group.same === false ? "词韵常宽于平水，此处不判出韵。" : "";
-    summary.append(cell(verdict, cls), cell(note));
+    const ciCls = group.sameCi === true ? "ok" : group.sameCi === false ? "fault" : "muted";
+    summary.append(
+      cell("结论", "muted"),
+      cell(verdict, cls),
+      cell(ciVerdict, ciCls),
+    );
     rhymes.append(summary);
     wrap.append(rhymes);
   }
@@ -923,16 +1026,35 @@ function appendIssueTable(wrap, issues) {
  * @param {object} yun
  */
 function appendYun(wrap, yun) {
-  wrap.append(heading("韵脚"));
+  wrap.append(heading(yun.book ? `韵脚 · ${yun.book}` : "韵脚"));
   const table = tableWith(["字", "可入"]);
   for (const foot of yun.feet || []) {
     const tr = document.createElement("tr");
-    tr.append(cell(foot.char), cell((foot.rhymes || []).join("、") || "未收"));
+    const tones = (foot.tones || []).join("/");
+    tr.append(cell(foot.char), cell(`${(foot.rhymes || []).join("、") || "未收"}${tones ? `（${tones}声）` : ""}`));
     table.append(tr);
   }
   const summary = document.createElement("tr");
-  const verdict = yun.sameRhyme === true ? "同部" : yun.sameRhyme === false ? "不同部" : "未定";
-  const cls = yun.sameRhyme === true ? "ok" : yun.sameRhyme === false ? "fault" : "muted";
+  let verdict = "未定";
+  let cls = "muted";
+  if (yun.compatible === true) {
+    verdict = "可通押";
+    cls = "ok";
+  } else if (yun.compatible === false) {
+    if (yun.sameRhyme === true) {
+      verdict = "同部·平仄相杂";
+      cls = "muted";
+    } else {
+      verdict = "不同部";
+      cls = "fault";
+    }
+  } else if (yun.sameRhyme === true) {
+    verdict = "同部";
+    cls = "ok";
+  } else if (yun.sameRhyme === false) {
+    verdict = "不同部";
+    cls = "fault";
+  }
   summary.append(cell(verdict, cls), cell(yun.detail || (yun.rhyme || []).join("、")));
   table.append(summary);
   wrap.append(table);

@@ -51,3 +51,56 @@ test("纯格律核查既不前置也不后置建议，报告留在卡片内", ()
   assert.equal(card.answerBeforeCard, undefined);
   assert.equal(card.answerAfterCard, undefined);
 });
+
+test("检索结果收成 search 卡片，建议排在卡片后", () => {
+  const card = presentTurn([
+    {
+      name: "searchPoemLines",
+      ok: true,
+      result: {
+        query: "明月几时有",
+        mode: "exact",
+        found: true,
+        count: 1,
+        items: [{
+          author: "苏轼",
+          title: "水调歌头",
+          source: "宋词",
+          line: "明月几时有，把酒问青天。",
+          before: "",
+          after: "",
+          match: "line",
+        }],
+      },
+    },
+  ]);
+  assert.equal(card.type, "search");
+  assert.equal(card.variant, "exact");
+  assert.equal(card.items[0].line, "明月几时有，把酒问青天。");
+  assert.equal(card.answerAfterCard, true);
+});
+
+test("词韵校验单独调用也能成韵部卡", () => {
+  const card = presentTurn([
+    {
+      name: "checkCiYun",
+      ok: true,
+      result: {
+        book: "词林正韵",
+        rhymeChars: ["东", "同"],
+        sameRhyme: true,
+        uniformTone: "平",
+        rhyme: ["第一部"],
+        options: [
+          { char: "东", rhymes: ["第一部"], tones: ["平"] },
+          { char: "同", rhymes: ["第一部"], tones: ["平"] },
+        ],
+        detail: "可以同入：第一部（平声）。",
+      },
+    },
+  ]);
+  assert.equal(card.type, "meter");
+  assert.equal(card.variant, "rhyme");
+  assert.equal(card.yun.book, "词林正韵");
+  assert.equal(card.yun.sameRhyme, true);
+});

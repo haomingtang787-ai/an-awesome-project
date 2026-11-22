@@ -23,6 +23,34 @@ const toTrad = Converter({ from: "cn", to: "tw" });
 
 const POETRY = "https://raw.githubusercontent.com/chinese-poetry/chinese-poetry/master/";
 const POETRY_API = "https://api.github.com/repos/chinese-poetry/chinese-poetry/contents/";
+const RHYME = "https://raw.githubusercontent.com/charlesix59/chinese_word_rhyme/main/data/";
+
+/** 平水韵上游字表缺「上声三讲」，按通行韵表补六个字。 */
+const PINGSHUI_GAPS = {
+  上声三讲: "讲港棒蚌项耩",
+};
+
+const SECTION_ORDER = { 上平: 1, 下平: 2, 上声: 3, 去声: 4, 入声: 5 };
+const CN_DIGITS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/**
+ * 把「一东」「二十九豏」「第三部」里的序数读成数字，用来排韵部次序。
+ * @param {string} text
+ * @returns {number}
+ */
+function cnNumber(text) {
+  const value = String(text ?? "").replace(/^第/, "").replace(/部$/, "");
+  const matched = value.match(/^[一二三四五六七八九十]+/);
+  if (!matched) return 99;
+  const number = matched[0];
+  if (number === "十") return 10;
+  if (number.startsWith("十")) return 10 + (CN_DIGITS[number.slice(1)] || 0);
+  const tens = number.split("十");
+  if (tens.length === 2) {
+    return (CN_DIGITS[tens[0]] || 0) * 10 + (CN_DIGITS[tens[1]] || 0);
+  }
+  return CN_DIGITS[number] || 99;
+}
 
 /**
  * raw.githubusercontent.com 偶发 504。jsDelivr 上是同一份文件。
@@ -186,7 +214,7 @@ function pushPoem(poems, index, author, title, paragraphs, source) {
 }
 
 async function buildPingshui() {
-  const response = await fetchOk("https://raw.githubusercontent.com/charlesix59/chinese_word_rhyme/main/data/Pingshui_Rhyme.json");
+  const response = await fetchOk(`${RHYME}Pingshui_Rhyme.json`);
   const raw = await response.json();
   const sectionName = {
     上平声部: "上平",
@@ -211,6 +239,23 @@ async function buildPingshui() {
       });
     }
   }
+
+  // 上游缺上声三讲，按通行韵表补上，使平水韵回到 106 部。
+  for (const [id, chars] of Object.entries(PINGSHUI_GAPS)) {
+    if (groups.some((group) => group.id === id)) continue;
+    const section = id.slice(0, 2);
+    groups.push({
+      id,
+      section,
+      name: id.slice(2),
+      tone: section === "入声" ? "入" : section.includes("平") ? "平" : "仄",
+      chars,
+    });
+  }
+  groups.sort((a, b) => (
+    (SECTION_ORDER[a.section] || 0) - (SECTION_ORDER[b.section] || 0)
+    || cnNumber(a.name) - cnNumber(b.name)
+  ));
 
   const names = {};
   const addName = (key, index) => {
@@ -245,6 +290,77 @@ async function buildPingshui() {
 
   await writeFile(join(dataDir, "pingshui.json"), JSON.stringify({ groups, names, alias }));
   console.log(`平水韵 ${groups.length} 部，${seen.size} 字，繁体别名 ${Object.keys(alias).length}`);
+}
+
+/**
+ * 词林正韵。十九部，每部按平声、仄声、入声分列；仄声含上声与去声。
+ */
+async function buildCilin() {
+  const response = await fetchOk(`${RHYME}Cilin_Rhyme.json`);
+  const raw = await response.json();
+  const sectionTone = { 平声: "平", 仄声: "仄", 入声: "入" };
+  const sectionWeight = { 平声: 0, 仄声: 1, 入声: 2 };
+  const groups = [];
+  for (const [id, sections] of Object.entries(raw)) {
+    for (const [section, chars] of Object.entries(sections)) {
+      groups.push({
+        id,
+        section,
+        tone: sectionTone[section] || "仄",
+        chars: [...new Set(chars)].join(""),
+      });
+    }
+  }
+  groups.sort((a, b) => (
+    cnNumber(a.id) - cnNumber(b.id)
+    || sectionWeight[a.section] - sectionWeight[b.section]
+  ));
+
+  const names = {};
+  const addName = (key, index) => {
+    const normalized = norm(key);
+    if (!normalized) return;
+    if (!names[normalized]) names[normalized] = [];
+    if (!names[normalized].includes(index)) names[normalized].push(index);
+    const traditional = norm(toTrad(normalized));
+    if (traditional && traditional !== normalized) {
+      if (!names[traditional]) names[traditional] = [];
+      if (!names[traditional].includes(index)) names[traditional].push(index);
+    }
+  };
+  groups.forEach((group, index) => {
+    addName(group.id, index);
+    addName(`词林正韵${group.id}`, index);
+    addName(`词韵${group.id}`, index);
+    addName(`${group.id}${group.section}`, index);
+    addName(`${group.section}${group.id}`, index);
+  });
+  for (const [key, predicate] of [
+    ["词林正韵", () => true],
+    ["词韵", () => true],
+    ["十九部", () => true],
+    ["平声", (group) => group.tone === "平"],
+    ["仄声", (group) => group.tone === "仄"],
+    ["入声", (group) => group.tone === "入"],
+  ]) {
+    const indexes = groups
+      .map((group, index) => (predicate(group) ? index : -1))
+      .filter((index) => index >= 0);
+    const normalized = norm(key);
+    names[normalized] = [...new Set([...(names[normalized] || []), ...indexes])];
+  }
+
+  const seen = new Set(groups.flatMap((group) => [...group.chars]));
+  const alias = {};
+  for (const ch of seen) {
+    const traditional = toTrad(ch);
+    if ([...traditional].length === 1 && traditional !== ch && !seen.has(traditional)) {
+      alias[traditional] = ch;
+    }
+  }
+
+  await writeFile(join(dataDir, "cilin.json"), JSON.stringify({ groups, names, alias }));
+  console.log(`词林正韵 ${groups.length} 组，${seen.size} 字，繁体别名 ${Object.keys(alias).length}`);
 }
 
 async function loadPoems() {
@@ -459,4 +575,5 @@ await buildPoems();
 await buildCipu();
 await saveLicenses();
 await buildPingshui();
+await buildCilin();
 await buildAllusions();

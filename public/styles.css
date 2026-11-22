@@ -624,6 +624,51 @@ div.pending::after {
   word-break: break-word;
 }
 
+.search-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 0 2px;
+}
+
+.search-item {
+  padding: 8px 0 12px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.search-item:last-child { border-bottom: none; }
+
+.search-line {
+  margin: 0;
+  font-family: var(--kai);
+  font-size: 19px;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  word-break: break-word;
+}
+
+.search-meta {
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+
+.search-cues {
+  margin: 4px 0 0;
+  color: var(--moss);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.search-context {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  opacity: 0.8;
+  word-break: break-word;
+}
+
 .fine {
   margin: 10px 0 0;
   color: var(--ink-soft);

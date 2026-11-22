@@ -63,17 +63,26 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ],
       "icon": "scripts/shichuang.ico",
-      "artifactName": "诗窗.exe"
+      "executableName": "shichuang"
     },
-    "portable": {
-      "artifactName": "诗窗.exe"
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "诗窗",
+      "installerIcon": "scripts/shichuang.ico",
+      "uninstallerIcon": "scripts/shichuang.ico",
+      "artifactName": "ShiChuang-setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
     }
   },
   "license": "MIT",

@@ -1,5 +1,5 @@
 /**
- * 打包 Windows 便携版。自动补齐国内 Electron 镜像，再调用 electron-builder。
+ * 打包 Windows 安装版。自动补齐国内 Electron 镜像，再调用 electron-builder。
  */
 
 import { spawn } from "node:child_process";
@@ -11,7 +11,7 @@ process.env.ELECTRON_MIRROR ||= "https://npmmirror.com/mirrors/electron/";
 process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||= "https://npmmirror.com/mirrors/electron-builder-binaries/";
 
 const cli = require.resolve("electron-builder/cli.js");
-const child = spawn(process.execPath, [cli, "--win", "portable", ...process.argv.slice(2)], {
+const child = spawn(process.execPath, [cli, "--win", "nsis", ...process.argv.slice(2)], {
   stdio: "inherit",
   env: process.env,
 });
